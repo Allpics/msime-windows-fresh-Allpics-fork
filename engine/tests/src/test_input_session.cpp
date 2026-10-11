@@ -1263,6 +1263,11 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
             "A deletion correction must cover only the letters actually typed.");
     require(!quanpin::corrected_reading_raw_length("nihao", {"ni"}, all_types).has_value(),
             "A plain prefix of a legal input must keep the reading-length consumption.");
+    // 贪心切分在 jin 上卡死、要回溯才切得开的合法输入：曾被判成手误，「再」按 zaij -> zai 吞掉 j。
+    require(quanpin::is_complete_pinyin_input("zaijinuta") && quanpin::looks_like_jianpin_spelling("zaijinut"),
+            "A legal input that needs backtracking must still count as legal.");
+    require(!quanpin::corrected_reading_raw_length("zaijinuta", {"zai"}, all_types).has_value(),
+            "A plain prefix of a backtracking-only legal input must keep the reading-length consumption.");
 
     const std::filesystem::path directory = data_directory / "autocorrect-selection-consumption";
     std::filesystem::create_directories(directory);
@@ -1276,11 +1281,18 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
                          "INSERT INTO tbl_1_h VALUES('hui', 'h', '会', 900000);"
                          "INSERT INTO tbl_1_h VALUES('hao', 'h', '好', 900000);");
         database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_z VALUES('zhang', 'z', '张', 900000);");
+                         "INSERT INTO tbl_1_z VALUES('zhang', 'z', '张', 900000);"
+                         "INSERT INTO tbl_1_z VALUES('zai', 'z', '再', 900000);");
+        database.execute("CREATE TABLE tbl_1_j(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_j VALUES('ji', 'j', '激', 900000);");
+        database.execute("CREATE TABLE tbl_1_t(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_t VALUES('ta', 't', '他', 900000);");
         database.execute("CREATE TABLE tbl_1_g(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_g VALUES('guo', 'g', '国', 900000);");
         database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);");
+                         "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);"
+                         "INSERT INTO tbl_1_n VALUES('nu', 'n', '怒', 900000);"
+                         "INSERT INTO tbl_1_n VALUES('niu', 'n', '牛', 900000);");
         database.execute("CREATE TABLE tbl_2_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', '你好', 1000);");
     }
@@ -1323,6 +1335,16 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
         (void)session.select_candidate(candidate_index(session, "你"));
         require(session.has_composition() && session.preedit() == "hao",
                 "A plain prefix of a legal input must keep its consumption.");
+    }
+    // 要回溯才切得开的合法输入不进纠错：预编辑按字面切分，选「再」剩 jinuta。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, all_types, true, true, true, paths);
+        type(session, "zaijinuta");
+        require(session.get_pinyin_segmentation_with_cases() == "zai'ji'nu'ta",
+                "A legal input must be displayed by its literal segmentation.");
+        (void)session.select_candidate(candidate_index(session, "再"));
+        require(session.has_composition() && session.preedit() == "jinuta",
+                "Selecting a literal prefix must not consume letters of the next syllable.");
     }
 
     std::filesystem::remove_all(directory);

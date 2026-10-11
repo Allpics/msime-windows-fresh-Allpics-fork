@@ -88,7 +88,9 @@ bool is_complete_pinyin_part(const std::string &part)
         return false;
     }
 
-    return !cut_one_piece_greedy(part, true).empty();
+    // 要能回溯：贪心在 zaijinuta 上取了 jin 就剩下切不动的 uta，把合法的 zai'ji'nu'ta
+    // 判成手误，预编辑和选词随之去走纠错。与查询侧的切分同一个算法。
+    return !cut_one_piece_min_segments(part, true).empty();
 }
 
 Segments append_rest(const Segments &head, const Segments &segments)
@@ -208,43 +210,20 @@ bool looks_like_jianpin_spelling(const std::string &pinyin)
     {
         return true;
     }
-    static const size_t kMaxSyllableLength =
-        std::max_element(intact_pinyin_list().begin(), intact_pinyin_list().end(),
-                         [](const std::string &lhs, const std::string &rhs) { return lhs.size() < rhs.size(); })
-            ->size();
-
-    // Greedy longest-match scan: the input must reduce to one or more legal
-    // syllables plus at most one trailing letter ("zheg" = zhe + g) to count
-    // as jianpin intent. All-consonant strings match zero syllables and
-    // return false on purpose: the engine has no multi-letter jianpin, so
-    // correction is the only useful reading of e.g. "bqng" -> bang.
-    size_t pos = 0;
-    while (pos < pinyin.size())
-    {
-        const size_t max_len = std::min(kMaxSyllableLength, pinyin.size() - pos);
-        size_t matched = 0;
-        for (size_t len = max_len; len >= 1; --len)
-        {
-            if (valid_pinyin.find(pinyin.substr(pos, len)) != valid_pinyin.end())
-            {
-                matched = len;
-                break;
-            }
-        }
-        if (matched == 0)
-        {
-            break;
-        }
-        pos += matched;
-    }
-    if (pos == 0 || pinyin.size() - pos > 1)
-    {
-        return false;
-    }
-    if (pinyin.size() == pos)
+    // The input must reduce to one or more legal syllables plus at most one
+    // trailing letter ("zheg" = zhe + g) to count as jianpin intent. The cut
+    // backtracks like the query-side segmentation ("zaijinut" = zai'ji'nu + t).
+    // All-consonant strings match zero syllables and return false on purpose:
+    // the engine has no multi-letter jianpin, so correction is the only useful
+    // reading of e.g. "bqng" -> bang.
+    if (is_complete_pinyin_input(pinyin))
     {
         // Fully reduced to legal syllables: a legitimate spelling, not a typo.
         return true;
+    }
+    if (pinyin.size() < 2 || !is_complete_pinyin_input(pinyin.substr(0, pinyin.size() - 1)))
+    {
+        return false;
     }
     // Exactly one trailing letter. It reads as jianpin intent only when it is a
     // plausible jianpin initial -- an initial consonant, as in "zheg" = zhe + g.
@@ -1209,10 +1188,12 @@ std::optional<size_t> corrected_reading_raw_length(const std::string &raw_letter
     {
         reading_letters += syllable;
     }
-    // 读音是原始字母的前缀，且整串本身是合法拼音：没有纠错在起作用，按读音长度即可。
+    // 读音是原始字母的前缀，且整串本身是合法拼音（可带一个末尾声母，与查询侧不进纠错的
+    // 判据一致）：没有纠错在起作用，按读音长度即可。合法输入上的纠错读法另有原读法领衔或
+    // 第 2 位兜底，选字面候选不该被它带偏（zaijinuta 选「再」曾按 zaij -> zai 吞掉 j）。
     // 只看前缀不够：buuhui 里单选「不」，bu 碰巧也是原始前缀，可它实际盖住的是 buu。
-    if (reading.empty() ||
-        (raw_letters.compare(0, reading_letters.size(), reading_letters) == 0 && is_complete_pinyin_input(raw_letters)))
+    if (reading.empty() || (raw_letters.compare(0, reading_letters.size(), reading_letters) == 0 &&
+                            (is_complete_pinyin_input(raw_letters) || looks_like_jianpin_spelling(raw_letters))))
     {
         return std::nullopt;
     }

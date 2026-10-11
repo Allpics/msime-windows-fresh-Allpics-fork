@@ -34,8 +34,8 @@ function post(action: DefaultImeAction): void {
 
 export function describeDefaultImeStatus(response: Pick<DefaultImeResponse, 'enabled' | 'isDefault'>): string {
   if (response.isDefault) return '水杉输入法已是默认输入法';
-  if (response.enabled === false) return '水杉输入法不在当前用户的键盘列表中，设为默认时会自动添加';
-  return '当前默认输入法不是水杉输入法';
+  if (response.enabled === false) return '水杉输入法不在当前用户的键盘列表中，设为默认时会自动添加并排到第一位';
+  return '水杉输入法没有排在中文（简体）键盘列表的第一位';
 }
 
 function handleResponse(response: DefaultImeResponse, action: DefaultImeAction): void {

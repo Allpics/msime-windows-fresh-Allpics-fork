@@ -1660,7 +1660,7 @@ void HandleWebMessage(HWND hwnd, ICoreWebView2WebMessageReceivedEventArgs *args)
                 {
                     ok = default_input_method::SetAsDefault(message);
                     if (ok)
-                        message = "已设为默认输入法，新打开的窗口会使用水杉输入法。";
+                        message = "已设为默认输入法，水杉输入法在中文（简体）中排第一位。";
                 }
                 const default_input_method::Status status = default_input_method::QueryStatus();
                 json::value response = {{"type", "defaultImeResponse"},

@@ -12,13 +12,17 @@ namespace
 // 系统用来标识 TSF 输入法的「语言:{CLSID}{Profile GUID}」串。
 // 与 windows/src/Global/Globals.cpp 的 MetasequoiaIMECLSID、MetasequoiaIMEGuidProfile 保持一致。
 constexpr wchar_t kProfileId[] = L"0804:{E3062E9A-D834-4637-8958-ED8CFA427D01}{4D59B1B4-D503-44AE-9259-BAD9BB2778AB}";
+// 水杉的 TSF 语言配置在系统里的注册位置，用来区分「没注册」和「没装中文语言」。
+constexpr wchar_t kTipProfileKey[] = L"SOFTWARE\\Microsoft\\CTF\\TIP\\{E3062E9A-D834-4637-8958-ED8CFA427D01}"
+                                     L"\\LanguageProfile\\0x00000804\\{4D59B1B4-D503-44AE-9259-BAD9BB2778AB}";
 
 constexpr wchar_t kUserProfileKey[] = L"Control Panel\\International\\User Profile";
 
 using InstallLayoutOrTipFn = BOOL(WINAPI *)(LPCWSTR, DWORD);
 using SetDefaultLayoutOrTipFn = BOOL(WINAPI *)(LPCWSTR, DWORD);
 // bcp47langs.dll 的导出，系统设置的「替代默认输入法」与 Set-WinDefaultInputMethodOverride
-// 都经由它写 InputMethodOverride。签名取自 Microsoft.InternationalSettings.Commands 的 P/Invoke 声明。
+// 都经由它写 InputMethodOverride，传空串即恢复「使用语言列表」。签名取自
+// Microsoft.InternationalSettings.Commands 的 P/Invoke 声明。
 using SetInputMethodOverrideFn = HRESULT(WINAPI *)(LPCWSTR);
 
 bool IsOurProfile(const wchar_t *id)
@@ -42,7 +46,7 @@ std::wstring ReadString(const wchar_t *subkey, const wchar_t *value, DWORD type_
 struct LanguageInputs
 {
     bool contains_ours = false;
-    std::wstring first;
+    bool ours_first = false;
 };
 
 LanguageInputs ReadLanguageInputs(const std::wstring &language)
@@ -54,6 +58,7 @@ LanguageInputs ReadLanguageInputs(const std::wstring &language)
         return result;
 
     DWORD best_order = MAXDWORD;
+    DWORD our_order = MAXDWORD;
     for (DWORD index = 0;; ++index)
     {
         wchar_t name[256];
@@ -69,14 +74,15 @@ LanguageInputs ReadLanguageInputs(const std::wstring &language)
         if (status != ERROR_SUCCESS || type != REG_DWORD || wcschr(name, L':') == nullptr)
             continue;
         if (IsOurProfile(name))
-            result.contains_ours = true;
-        if (order < best_order)
         {
-            best_order = order;
-            result.first = name;
+            result.contains_ours = true;
+            our_order = order;
         }
+        if (order < best_order)
+            best_order = order;
     }
     RegCloseKey(key);
+    result.ours_first = result.contains_ours && our_order == best_order;
     return result;
 }
 
@@ -96,64 +102,83 @@ std::vector<std::wstring> ReadLanguages()
     return languages;
 }
 
+bool IsTipRegistered()
+{
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, kTipProfileKey, 0, KEY_READ | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS)
+        return false;
+    RegCloseKey(key);
+    return true;
+}
+
+// 旧版「设为默认」写的是替代默认输入法；仍指向水杉就恢复成「使用语言列表」。
+// 只是清理，失败不影响排序结果，不报错。
+void ClearOurInputMethodOverride()
+{
+    const std::wstring override_id = ReadString(kUserProfileKey, L"InputMethodOverride", RRF_RT_REG_SZ);
+    if (override_id.empty() || !IsOurProfile(override_id.c_str()))
+        return;
+    HMODULE languages = LoadLibraryExW(L"bcp47langs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    const auto set_override =
+        languages ? reinterpret_cast<SetInputMethodOverrideFn>(GetProcAddress(languages, "SetInputMethodOverride"))
+                  : nullptr;
+    if (!set_override || FAILED(set_override(L"")))
+        RegDeleteKeyValueW(HKEY_CURRENT_USER, kUserProfileKey, L"InputMethodOverride");
+    if (languages)
+        FreeLibrary(languages);
+}
+
 } // namespace
 
 Status QueryStatus()
 {
     Status status;
-    const std::vector<std::wstring> languages = ReadLanguages();
-    std::wstring first_of_first_language;
-    for (size_t i = 0; i < languages.size(); ++i)
+    for (const std::wstring &language : ReadLanguages())
     {
-        const LanguageInputs inputs = ReadLanguageInputs(languages[i]);
+        const LanguageInputs inputs = ReadLanguageInputs(language);
         status.enabled = status.enabled || inputs.contains_ours;
-        if (i == 0)
-            first_of_first_language = inputs.first;
+        status.is_default = status.is_default || inputs.ours_first;
     }
-
-    // 用户在「替代默认输入法」里选过就以那一项为准；没选过（默认值「使用语言列表」）时，
-    // 默认输入法是语言列表首个语言里排第一的输入法。
-    const std::wstring override_id = ReadString(kUserProfileKey, L"InputMethodOverride", RRF_RT_REG_SZ);
-    const std::wstring &effective = override_id.empty() ? first_of_first_language : override_id;
-    status.is_default = status.enabled && !effective.empty() && IsOurProfile(effective.c_str());
     return status;
 }
 
 bool SetAsDefault(std::string &error)
 {
     HMODULE input = LoadLibraryExW(L"input.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    HMODULE languages = LoadLibraryExW(L"bcp47langs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     const auto install =
         input ? reinterpret_cast<InstallLayoutOrTipFn>(GetProcAddress(input, "InstallLayoutOrTip")) : nullptr;
     const auto set_default =
         input ? reinterpret_cast<SetDefaultLayoutOrTipFn>(GetProcAddress(input, "SetDefaultLayoutOrTip")) : nullptr;
-    const auto set_override =
-        languages ? reinterpret_cast<SetInputMethodOverrideFn>(GetProcAddress(languages, "SetInputMethodOverride"))
-                  : nullptr;
 
     bool ok = false;
-    if (!install || (!set_override && !set_default))
+    const Status before = QueryStatus();
+    if (before.is_default)
+    {
+        ok = true;
+    }
+    else if (!install || !set_default)
     {
         error = "当前系统不支持自动设置默认输入法，请在系统设置中手动设置。";
     }
-    else if (!QueryStatus().enabled && !install(kProfileId, 0))
+    else if (!before.enabled && !install(kProfileId, 0))
     {
-        error = "无法把水杉输入法加入键盘列表，请确认已安装中文（简体）语言。";
+        error = IsTipRegistered() ? "无法把水杉输入法加入键盘列表，请先在系统设置中添加中文（简体）语言。"
+                                  : "水杉输入法没有在系统中注册，请重新安装输入法。";
     }
-    else if (set_override ? FAILED(set_override(kProfileId)) : !set_default(kProfileId, 0))
+    else if (!set_default(kProfileId, 0))
     {
-        error = "系统拒绝了设置默认输入法的请求，请在系统设置中手动设置。";
+        error = "系统拒绝了设置默认输入法的请求，请在系统设置中手动把水杉输入法移到第一位。";
     }
     else if (!QueryStatus().is_default)
     {
-        error = "系统没有应用这项设置，请在系统设置中手动选择水杉输入法。";
+        error = "系统没有应用这项设置，请在系统设置中手动把水杉输入法移到第一位。";
     }
     else
     {
         ok = true;
     }
-    if (languages)
-        FreeLibrary(languages);
+    if (ok)
+        ClearOurInputMethodOverride();
     if (input)
         FreeLibrary(input);
     return ok;
@@ -161,7 +186,7 @@ bool SetAsDefault(std::string &error)
 
 void OpenSystemSettings(HWND owner)
 {
-    ShellExecuteW(owner, L"open", L"ms-settings:keyboard", nullptr, nullptr, SW_SHOWNORMAL);
+    ShellExecuteW(owner, L"open", L"ms-settings:regionlanguage", nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 } // namespace default_input_method

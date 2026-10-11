@@ -414,6 +414,68 @@ std::vector<std::string> cut_one_piece_min_segments(const std::string &pinyin, b
     return solve(solve, 0);
 }
 
+std::vector<Segments> enumerate_min_segmentations(const std::string &pinyin, const size_t path_limit)
+{
+    std::vector<Segments> result;
+    if (pinyin.empty() || path_limit == 0)
+    {
+        return result;
+    }
+    const auto &pinyin_set = intact_pinyin_set();
+    constexpr size_t kMaxSyllableLength = 6;
+    constexpr size_t kUnreachable = static_cast<size_t>(-1);
+    const size_t length = pinyin.size();
+    // min_count[i]：从 i 切到末尾最少几个音节。只沿「这一刀之后仍是最少音节」的边往下走，
+    // 枚举出来的就只有等音节数的切分，组合数只随歧义边界的个数增长。
+    std::vector<size_t> min_count(length + 1, kUnreachable);
+    min_count[length] = 0;
+    for (size_t start = length; start-- > 0;)
+    {
+        for (size_t len = 1; len <= kMaxSyllableLength && start + len <= length; ++len)
+        {
+            if (min_count[start + len] != kUnreachable &&
+                pinyin_set.find(pinyin.substr(start, len)) != pinyin_set.end())
+            {
+                min_count[start] = (std::min)(min_count[start], min_count[start + len] + 1);
+            }
+        }
+    }
+    if (min_count[0] == kUnreachable)
+    {
+        return result;
+    }
+
+    Segments current;
+    const auto walk = [&](auto &&self, const size_t start) -> void {
+        if (result.size() >= path_limit)
+        {
+            return;
+        }
+        if (start == length)
+        {
+            result.push_back(current);
+            return;
+        }
+        for (size_t len = 1; len <= kMaxSyllableLength && start + len <= length; ++len)
+        {
+            if (min_count[start + len] == kUnreachable || min_count[start + len] + 1 != min_count[start])
+            {
+                continue;
+            }
+            std::string piece = pinyin.substr(start, len);
+            if (pinyin_set.find(piece) == pinyin_set.end())
+            {
+                continue;
+            }
+            current.push_back(std::move(piece));
+            self(self, start + len);
+            current.pop_back();
+        }
+    };
+    walk(walk, 0);
+    return result;
+}
+
 bool is_complete_pinyin_input(const std::string &pinyin)
 {
     if (pinyin.empty())

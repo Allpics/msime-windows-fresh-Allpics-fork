@@ -57,7 +57,8 @@ ctest --test-dir build --output-on-failure --timeout 20
 
 - 平局时偏好更短的首音节（`quanpin/quanpin_utils.cpp` 的 `cut_one_piece_min_segments`）。**这个判据是对的，不要翻成前向最长匹配**——在 48068 条带词典切分的多音节词上量过，翻向会从 99.605% 掉到 99.393%，因为拼音的 `n`/`ng` 歧义让前向最长匹配在中文上不成立
 - 歧义切分交给词典裁决，走 `quanpin_dictionary.cpp` 的备选切分路径，受 `kMaxSyllablesForMultipleSegmentations` 限制
-- `query()` 在每次按键上都会跑。往里加无条件的枚举或查询前先量耗时，`tests/src/test_pinyin.cpp` 里那个 timings 用例只打印不断言，拦不住回归
+- 上一条是单词级（有整词就按词频比）。没有任何切分能命中整词的整句（`yibananzhao` 的一般按照 / 一把难找），由 `arbitrate_literal_segmentations` 对等音节数的字面切分各解一遍词格、按路径分裁决，只在整句来源开着时介入；预编辑跟着首选的切分走。上面的「平局取短首音节」在这里只是同分时的判据
+- `query()` 在每次按键上都会跑。往里加无条件的枚举或查询前先量耗时，`tests/src/test_pinyin.cpp` 里那个 timings 用例只打印不断言，拦不住回归。改切分或整句打分时，用 `eval_quanpin_sentence`（句子级评测集在 `tests/data/quanpin_sentence_cases.tsv`）对着真实词库的副本跑前后对比，它同时报每键耗时
 
 ## 数据
 

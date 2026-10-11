@@ -138,6 +138,12 @@ class QuanpinDictionary
         const std::string &raw_input, const std::string &primary_segmentation,
         const quanpin::Segments &primary_segments, const std::vector<quanpin::Segments> &alternative_segmentations,
         std::vector<WordItem> result);
+    // 合法输入的等音节数字面切分（yi'ba'nan'zhao / yi'ban'an'zhao）按整句打分争领衔。
+    // leading_segments 返回领衔的字面切分，交给 arbitrate_legal_corrections 当原读法。
+    std::vector<WordItem> arbitrate_literal_segmentations(const std::string &raw_input,
+                                                          const quanpin::Segments &segments,
+                                                          std::vector<WordItem> result,
+                                                          quanpin::Segments &leading_segments);
     std::vector<WordItem> arbitrate_legal_corrections(const std::string &raw_input,
                                                       const quanpin::Segments &plain_segments,
                                                       const std::vector<quanpin::AutocorrectCut> &corrected_cuts,
@@ -145,6 +151,12 @@ class QuanpinDictionary
     // 词格对一条完整切分的最佳路径分（加载了 sc.lm 时是 log10，否则是启发式的 ln）。
     // 与整句候选开关无关；单音节也能打分。不是全合法音节或解不出路径时为空。
     std::optional<double> lattice_best_path_score(const quanpin::Segments &cut);
+    // 同上，返回整条最佳路径。按切分缓存：一次按键里同一条切分会被字面切分与纠错两轮裁决各打一次分。
+    std::optional<quanpin::LatticePath> lattice_best_path(const quanpin::Segments &cut);
+    // 词格的跨度查询，套一层按（跨度, limit）的缓存：每多敲一个字母整句都要重解，同一输入的
+    // 几种字面切分、主切与纠错读法之间也大量共用跨度，不缓存就一遍遍打同样的 SQL。结果与
+    // 直查逐行相同；随 reset_cache 清空（词库被写或换了开关时）。
+    quanpin::WordLatticeLookup lattice_lookup(int limit);
     bool user_prefers_reading(const std::string &key);
     static void append_unique_words(std::vector<WordItem> &result, const std::vector<WordItem> &extra);
     void mark_autocorrect_candidates(std::vector<WordItem> &candidates, const std::string &raw_input);
@@ -179,6 +191,10 @@ class QuanpinDictionary
     // cleared with the dictionary caches: its value depends only on the input
     // and the static correction tables, never on dictionary rows.
     CircularBuffer<std::string, SeriesQueryResolution> resolution_cache_;
+    // 见 lattice_best_path。随 reset_cache 清空：分数取决于词库行和整句选项（搭配模型）。
+    CircularBuffer<std::string, std::optional<quanpin::LatticePath>> lattice_best_path_cache_;
+    // 见 lattice_lookup。
+    std::unordered_map<std::string, std::vector<quanpin::LatticeLexeme>> lattice_span_cache_;
     sqlite3 *db_ = nullptr;
     sqlite3_int64 data_version_ = -1;
     metasequoia::RuntimePaths paths_;

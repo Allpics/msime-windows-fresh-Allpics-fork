@@ -137,6 +137,10 @@ constexpr double kLegalInputLengthChangePenaltyLog = 3.0;
 // 原读法领衔时，纠错读法离它在这个分差以内才出现在第 2 位；更远的不出现。没有它，
 // 每个碰巧能纠成别的音节的输入都会在第 2 位挂一个语言模型都不认的读法。
 constexpr double kLegalInputRunnerUpGapLog = 3.0;
+// 合法输入的等音节数字面切分（ban'an / ba'nan）：最多枚举几条、最多多解几条词格。
+// 每多解一条，按键路径上就多一次词格解码；绝大多数输入只有一两处歧义边界。
+constexpr size_t kLiteralSegmentationEnumerateLimit = 8;
+constexpr size_t kLiteralSegmentationDecodeLimit = 3;
 
 quanpin::Segments cut_syllables(const quanpin::AutocorrectCut &cut)
 {
@@ -342,8 +346,9 @@ std::string escape_sql_text(std::string text)
 
 QuanpinDictionary::QuanpinDictionary(std::string db_path, metasequoia::RuntimePaths paths)
     : cache_(128), series_cache_(128), segmentation_cache_(128), prefix_miss_cache_(128), resolution_cache_(128),
-      paths_(std::move(paths)), decoder_(paths_.resource(metasequoia::assets::pinyin_model),
-                                         paths_.user(metasequoia::assets::pinyin_user_dictionary)),
+      lattice_best_path_cache_(64), paths_(std::move(paths)),
+      decoder_(paths_.resource(metasequoia::assets::pinyin_model),
+               paths_.user(metasequoia::assets::pinyin_user_dictionary)),
       language_model_(&ngram::shared_language_model(paths_.resource(metasequoia::assets::language_model))),
       neural_keyboard_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_keyboard))),
       db_path_(db_path.empty() ? metasequoia::path_to_utf8(paths_.dictionary(metasequoia::assets::main_dictionary))
@@ -715,10 +720,13 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
             result = merge_alternative_segmentations(raw_input, pinyin_segmentation_, segments,
                                                      alternative_segmentations, std::move(result));
         }
+        // 字面切分先争出领衔，纠错读法再与领衔的那条比：纠错胜出时第 2 位是得分最高的字面读法。
+        quanpin::Segments leading_segments;
+        result = arbitrate_literal_segmentations(raw_input, segments, std::move(result), leading_segments);
         if (!resolution.legal_corrected_cuts.empty())
         {
-            result =
-                arbitrate_legal_corrections(raw_input, segments, resolution.legal_corrected_cuts, std::move(result));
+            result = arbitrate_legal_corrections(raw_input, leading_segments, resolution.legal_corrected_cuts,
+                                                 std::move(result));
         }
         keep_literal_whole_word_first(result, raw_input);
     }
@@ -921,9 +929,9 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
         }
         if (sentence_association_.word_lattice || !neural_rerankers.empty())
         {
-            quanpin::merge_lattice_candidates(
-                result, segments, quanpin::make_lattice_db_lookup(db_, statement_cache_, lattice_options.span_limit),
-                segmentation.empty() ? raw_input : segmentation, lattice_options, neural_rerankers);
+            quanpin::merge_lattice_candidates(result, segments, lattice_lookup(lattice_options.span_limit),
+                                              segmentation.empty() ? raw_input : segmentation, lattice_options,
+                                              neural_rerankers);
         }
     }
 
@@ -1165,6 +1173,177 @@ std::vector<WordItem> QuanpinDictionary::merge_alternative_segmentations(
     return merged;
 }
 
+// 合法输入常有不止一种等音节数的切分：yibananzhao 既是 yi'ba'nan'zhao 也是
+// yi'ban'an'zhao，最少音节规则平局时取较短的首音节，于是固定落在前者、出「一把难找」。
+// 切分是在查词之前定的，没有上下文，这里把它交给整句打分：
+//   - 任一条切分在词库里有整词（fang'an 的方案 / fan'gan 的反感、西安）时不介入，那是
+//     merge_alternative_segmentations 按词频比的单词级歧义，已经调好，不该被整句分翻动；
+//   - 否则各切分解一遍词格，路径分最高的领衔，同分仍是原切分（最少音节规则降为平局判据）；
+//   - 输的一方分差不超过 kLegalInputRunnerUpGapLog 时，它的整句占第 2 位；更远就不出，
+//     免得每个带 n/ng 歧义的输入都在第 2 位挂一句不通的话。
+// 只在整句来源开着时介入：整句来源全关时没有整句可比，结果与改造前逐位一致。用户在原
+// 切分键上调过频或造过词时，原切分不让出领衔（同 arbitrate_legal_corrections）。
+std::vector<WordItem> QuanpinDictionary::arbitrate_literal_segmentations(const std::string &raw_input,
+                                                                         const quanpin::Segments &segments,
+                                                                         std::vector<WordItem> result,
+                                                                         quanpin::Segments &leading_segments)
+{
+    leading_segments = segments;
+    if (!sentence_association_.any_sentence_source() || result.empty() || segments.size() < 2 ||
+        raw_input.find('\'') != std::string::npos || !quanpin::has_only_complete_pinyin_segments(segments))
+    {
+        return result;
+    }
+
+    // 主切分必须就是字面切分之一（别名改写过字母的读法不算），备选是其余等音节数的切分。
+    bool primary_is_literal = false;
+    std::vector<quanpin::Segments> alternatives;
+    for (auto &cut : quanpin::enumerate_min_segmentations(raw_input, kLiteralSegmentationEnumerateLimit))
+    {
+        cut = normalize_umlaut_aliases(std::move(cut));
+        if (cut == segments)
+        {
+            primary_is_literal = true;
+        }
+        else if (alternatives.size() < kLiteralSegmentationDecodeLimit)
+        {
+            alternatives.push_back(std::move(cut));
+        }
+    }
+    if (!primary_is_literal || alternatives.empty())
+    {
+        return result;
+    }
+
+    std::vector<quanpin::Segments> all_cuts = alternatives;
+    all_cuts.push_back(segments);
+    if (!quanpin::query_exact_segmentations_keyed_flat(all_cuts, db_, statement_cache_, 1).empty())
+    {
+        return result;
+    }
+
+    const auto primary_score = lattice_best_path_score(segments);
+    if (!primary_score.has_value())
+    {
+        return result;
+    }
+    std::optional<double> best_score;
+    const quanpin::Segments *best_cut = nullptr;
+    for (const auto &cut : alternatives)
+    {
+        const auto score = lattice_best_path_score(cut);
+        if (score.has_value() && (!best_score.has_value() || *score > *best_score))
+        {
+            best_score = score;
+            best_cut = &cut;
+        }
+    }
+    if (best_cut == nullptr)
+    {
+        return result;
+    }
+
+    const std::string primary_key = quanpin::join_segments(segments);
+    const std::string best_key = quanpin::join_segments(*best_cut);
+    const auto is_sentence_of = [](const std::string &key) {
+        return [&key](const WordItem &item) { return item.canonical_pinyin == key; };
+    };
+    const bool alternative_leads = *best_score > *primary_score && !user_prefers_reading(primary_key);
+    const double gap = alternative_leads ? *best_score - *primary_score : *primary_score - *best_score;
+    if (!alternative_leads)
+    {
+        if (gap > kLegalInputRunnerUpGapLog)
+        {
+            return result;
+        }
+        // 第 2 位只要一句。Trigram 整句开着时直接用打分时解出的那条最优路径，与 merge_lattice_candidates
+        // 造的行同形；不必为这一行再跑一遍带神经重排的 query_series。只开神经等来源时 Trigram 行不显示，
+        // 那就照常查一遍，取它的整键块首行（词库里没有这条切分的整词，上面已经排除，整键块就是整句行）。
+        std::optional<WordItem> runner;
+        if (sentence_association_.word_lattice)
+        {
+            if (const auto path = lattice_best_path(*best_cut))
+            {
+                runner = WordItem(best_key, path->sentence, static_cast<std::int64_t>(path->log_prob * 1000.0),
+                                  CandidateSource::Generated, path->key);
+                runner->sentence_association = true;
+            }
+        }
+        else
+        {
+            const auto alternative = query_series(raw_input, best_key, *best_cut);
+            const auto found = std::find_if(alternative.begin(), alternative.end(), is_sentence_of(best_key));
+            if (found != alternative.end())
+            {
+                runner = *found;
+            }
+        }
+        if (!runner.has_value())
+        {
+            return result;
+        }
+        std::vector<WordItem> merged;
+        merged.push_back(result.front());
+        append_unique_words(merged, {*runner});
+        append_unique_words(merged, result);
+        return merged;
+    }
+
+    leading_segments = *best_cut;
+    // 同 query_exact 里纠错的上下文消解：胜出切分的整键块（整句行）领衔，其余照旧，
+    // 胜出切分的前缀词垫底；整键块为空时（整句只开了重排、模型没载入）由前缀词领衔。
+    std::vector<WordItem> winner_full;
+    std::vector<WordItem> winner_prefix;
+    for (auto &item : query_series(raw_input, best_key, *best_cut))
+    {
+        (item.canonical_pinyin == best_key ? winner_full : winner_prefix).push_back(std::move(item));
+    }
+    if (winner_full.empty())
+    {
+        winner_full.swap(winner_prefix);
+    }
+    if (winner_full.empty())
+    {
+        leading_segments = segments;
+        return result;
+    }
+    // 原切分的整句：分差以内占第 2 位，更远就整组不出（前缀词照留）。
+    // 原切分的前缀区间扫描会捞出胜出切分的词，读音却记在原切分上（yi'ba 扫出「一般」，pinyin 是
+    // yi'ba）：同一个词两边都有时换成胜出切分那一行，选它才按 yi'ban 消耗字母。位置不变。
+    std::unordered_map<std::string, const WordItem *> winner_prefix_by_word;
+    for (const auto &item : winner_prefix)
+    {
+        winner_prefix_by_word.emplace(item.word, &item);
+    }
+    std::vector<WordItem> primary_sentences;
+    std::vector<WordItem> rest;
+    for (auto &item : result)
+    {
+        if (item.canonical_pinyin == primary_key)
+        {
+            primary_sentences.push_back(std::move(item));
+            continue;
+        }
+        const auto same_word = winner_prefix_by_word.find(item.word);
+        rest.push_back(same_word == winner_prefix_by_word.end() ? std::move(item) : *same_word->second);
+    }
+    std::vector<WordItem> merged;
+    merged.push_back(winner_full.front());
+    if (gap <= kLegalInputRunnerUpGapLog && !primary_sentences.empty())
+    {
+        append_unique_words(merged, {primary_sentences.front()});
+        append_unique_words(merged, winner_full);
+        append_unique_words(merged, primary_sentences);
+    }
+    else
+    {
+        append_unique_words(merged, winner_full);
+    }
+    append_unique_words(merged, rest);
+    append_unique_words(merged, winner_prefix);
+    return merged;
+}
+
 // 合法输入上的手误（ziazheliya、jioa、jiuzheeyang、nia）按噪声信道整句打分：
 //   总分 = 词格最佳路径分 - 每处纠正的手误代价（换位 2.0，多字/漏字 3.0）
 // 原读法代价为 0。最高分领衔，另一方的最佳读法占第 2 位：纠错领衔时原读法永远在
@@ -1264,9 +1443,20 @@ std::vector<WordItem> QuanpinDictionary::arbitrate_legal_corrections(
 
 std::optional<double> QuanpinDictionary::lattice_best_path_score(const quanpin::Segments &cut)
 {
+    const auto path = lattice_best_path(cut);
+    return path.has_value() ? std::optional<double>(path->log_prob) : std::nullopt;
+}
+
+std::optional<quanpin::LatticePath> QuanpinDictionary::lattice_best_path(const quanpin::Segments &cut)
+{
     if (cut.empty() || !quanpin::has_only_complete_pinyin_segments(cut))
     {
         return std::nullopt;
+    }
+    const std::string cache_key = quanpin::join_segments(cut);
+    if (const auto *cached = lattice_best_path_cache_.find(cache_key))
+    {
+        return *cached;
     }
     // 与 query_series 的装配保持一致：collocation 项同样参与路径分。
     quanpin::WordLatticeOptions lattice_options;
@@ -1279,9 +1469,15 @@ std::optional<double> QuanpinDictionary::lattice_best_path_score(const quanpin::
         };
         lattice_options.collocation_weight = sentence_association_.collocation_weight;
     }
-    const auto lookup = quanpin::make_lattice_db_lookup(db_, statement_cache_, lattice_options.span_limit);
-    const auto cut_paths = quanpin::decode_word_lattice(cut, lookup, lattice_options);
-    return cut_paths.empty() ? std::nullopt : std::optional<double>(cut_paths.front().log_prob);
+    const auto lookup = lattice_lookup(lattice_options.span_limit);
+    auto cut_paths = quanpin::decode_word_lattice(cut, lookup, lattice_options);
+    std::optional<quanpin::LatticePath> best;
+    if (!cut_paths.empty())
+    {
+        best = std::move(cut_paths.front());
+    }
+    lattice_best_path_cache_.insert(cache_key, best);
+    return best;
 }
 
 // 用户在这个读音键上有过调频或造词记录。只在边际已达标、要决定是否接管时才查，
@@ -1604,6 +1800,30 @@ void QuanpinDictionary::reset_cache()
     series_cache_.clear();
     segmentation_cache_.clear();
     prefix_miss_cache_.clear();
+    lattice_best_path_cache_.clear();
+    lattice_span_cache_.clear();
+}
+
+quanpin::WordLatticeLookup QuanpinDictionary::lattice_lookup(int limit)
+{
+    return [this, lookup = quanpin::make_lattice_db_lookup(db_, statement_cache_, limit),
+            limit](const quanpin::Segments &span) {
+        // 超过上限整体清掉，免得一次长时间输入把内存撑大（同双拼的 direct_span_cache_）。
+        constexpr std::size_t kLatticeSpanCacheLimit = 8192;
+        std::string key = quanpin::join_segments(span);
+        key.push_back('#');
+        key += std::to_string(limit);
+        auto found = lattice_span_cache_.find(key);
+        if (found == lattice_span_cache_.end())
+        {
+            if (lattice_span_cache_.size() >= kLatticeSpanCacheLimit)
+            {
+                lattice_span_cache_.clear();
+            }
+            found = lattice_span_cache_.emplace(std::move(key), lookup(span)).first;
+        }
+        return found->second;
+    };
 }
 
 void QuanpinDictionary::reset_sentence_cache()

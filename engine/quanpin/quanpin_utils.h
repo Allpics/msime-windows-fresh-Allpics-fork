@@ -33,6 +33,9 @@ SyllableGraph build_syllable_graph(const std::string &pinyin);
 std::vector<Segments> enumerate_complete_segmentations(const SyllableGraph &graph, size_t path_limit = 32);
 std::vector<std::string> cut_one_piece_greedy(const std::string &pinyin, bool intact_only);
 std::vector<std::string> cut_one_piece_min_segments(const std::string &pinyin, bool intact_only);
+// 音节数与 cut_one_piece_min_segments 相同的全部合法切分（最多 path_limit 条），即只在
+// ban'an / ba'nan 这类等长歧义边界上分叉。cut_one_piece_min_segments 的结果总在其中。
+std::vector<Segments> enumerate_min_segmentations(const std::string &pinyin, size_t path_limit);
 bool is_complete_pinyin_input(const std::string &pinyin);
 // 把切好的全拼串换成 Google 两个解码器（本地 googlepinyinime-rev 与 inputtools
 // 云输入）认的 ü 写法：nve→nue、lve→lue、jv→ju……只在送进这两个解码器前用，

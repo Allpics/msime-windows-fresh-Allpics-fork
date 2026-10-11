@@ -120,6 +120,9 @@
 - CLSID、profile GUID、compartment GUID、语言栏 GUID 与注册表路径属于持久身份。除非明确进行迁移，
   不要重新生成或改写；改动时同时核对 `Register/`、`Globals.*`、`.rc` 与卸载路径。
 - 新增/替换图标时同步资源 ID、`.rc`、`CMakeLists.txt` 和 `LanguageBar` 的索引；浅色/深色图标应成对。
+- 语言配置（profile）图标：安装器把 `image/msime.ico` 装成 DLL 上一级目录的 `MetasequoiaImeTip.ico`，
+  `RegisterProfiles` 发现它就注册这个固定路径，否则退回 DLL 内嵌的 `IDIS_METASEQUOIAIME`。不要改回总是
+  注册 DLL 路径：版本目录每次升级都变，任务栏会在换目录时取图标失败，改显示「简体」直到资源管理器重启。
 - 生产日志不得记录用户原始按键、预编辑、候选词或提交文本。性能与 IPC 诊断记录耗时、请求 ID、
   token、状态和错误码即可；调试日志也应尽量避免持久化用户输入。
 

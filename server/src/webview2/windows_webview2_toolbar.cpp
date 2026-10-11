@@ -387,21 +387,12 @@ HRESULT OnControllerCreatedFtbWnd(      //
                     {
                         std::string mode = json::value_to<std::string>(val.at("data"));
 
-                        if (mode == "cn") // Change to CN
+                        // "en" is sent from the 中/日 icon, "cn" from the English one.
+                        // The Server picks the destination, so the trilingual cycle
+                        // applies to clicks as it does to the hotkey.
+                        if (mode == "cn" || mode == "en")
                         {
-#ifdef FANY_DEBUG
-                            (void)0;
-#endif
-                            SendToTsfWorkerThreadViaNamedpipe(
-                                Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToCn, L"");
-                        }
-                        else if (mode == "en") // Change to EN
-                        {
-#ifdef FANY_DEBUG
-                            (void)0;
-#endif
-                            SendToTsfWorkerThreadViaNamedpipe(
-                                Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToEn, L"");
+                            FanyNamedPipe::EnqueueToolbarLanguageToggleTask(mode == "en");
                         }
                     }
                     else if (type == "exitEnglishInputMode")

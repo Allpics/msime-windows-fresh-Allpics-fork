@@ -468,19 +468,15 @@ void FloatingToolbarPresenter::RebuildScene()
             {
                 FanyNamedPipe::EnqueueExitEnglishInputModeTask();
             }
-            else if (impl_->cnEn == 1)
-            {
-                SendWorker(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToEn);
-            }
             else
             {
-                SendWorker(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToCn);
+                FanyNamedPipe::EnqueueToolbarLanguageToggleTask(impl_->cnEn == 1);
             }
         });
     }
     else if (impl_->cnEn != 1)
     {
-        addGlyph(kIconEn, []() { SendWorker(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToCn); });
+        addGlyph(kIconEn, []() { FanyNamedPipe::EnqueueToolbarLanguageToggleTask(false); });
     }
     else if (impl_->englishInputMode == 1)
     {
@@ -488,11 +484,11 @@ void FloatingToolbarPresenter::RebuildScene()
     }
     else if (impl_->japaneseInputMode == 1)
     {
-        addGlyph(kIconJa, []() { SendWorker(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToEn); });
+        addGlyph(kIconJa, []() { FanyNamedPipe::EnqueueToolbarLanguageToggleTask(true); });
     }
     else
     {
-        addGlyph(kIconCn, []() { SendWorker(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToEn); });
+        addGlyph(kIconCn, []() { FanyNamedPipe::EnqueueToolbarLanguageToggleTask(true); });
     }
 
     const FloatingToolbarItemsConfig &items = GetConfiguredFloatingToolbarItems();

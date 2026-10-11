@@ -897,6 +897,37 @@ void HandleTrilingualCycleKey(uint64_t client_id, uint64_t activation_epoch, uin
     SendCurrentDataToClient(client_id, activation_epoch, request_id);
 }
 
+// The toolbar has no requester state bits, so the clicked icon says whether the
+// IME was open and the native language is the Server's active one, which is what
+// that icon showed. TSF still owns OPENCLOSE: English and back go through the
+// ordinary worker switches, Chinese <-> Japanese is a Server-side change only.
+void HandleToolbarLanguageToggle(bool from_ime_enabled)
+{
+    using FanyImeTrilingualInput::Mode;
+    const bool japanese = GetActiveInputMode() == "japanese";
+    const Mode destination = FanyImeTrilingualInput::Destination(from_ime_enabled, japanese,
+                                                                 GetConfiguredTrilingualCycleEnabled(), japanese);
+    if (destination == Mode::English)
+    {
+        SendToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToEn, L"");
+        return;
+    }
+
+    const std::string wanted_mode = destination == Mode::Japanese ? "japanese" : "chinese";
+    if (wanted_mode != GetActiveInputMode() && SetActiveInputMode(wanted_mode))
+    {
+        SetEnglishInputMode(false);
+        PostMessage(::global_hwnd, WM_HIDE_MAIN_WINDOW, 0, 0);
+        ClearState();
+        SwitchSessionForLanguageCycle();
+        PostMessage(::global_hwnd_ftb, UPDATE_FTB_INPUT_MODE, wanted_mode == "japanese" ? 1 : 0, 0);
+        // Every client, the focused one included: no key reply carries this change.
+        BroadcastConfiguredInputModeState();
+    }
+    if (!from_ime_enabled)
+        SendToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::SwitchToCn, L"");
+}
+
 /**
  * @brief
  *

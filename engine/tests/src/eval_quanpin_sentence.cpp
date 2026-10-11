@@ -3,7 +3,7 @@
 //
 // 不是测试：不断言，也不进 ctest。改切分或整句打分前后各跑一遍对比，例如
 //   set METASEQUOIA_IME_DATA_DIR=<数据目录的副本>
-//   eval_quanpin_sentence engine\tests\data\quanpin_sentence_cases.tsv [repeats] [lattice]
+//   eval_quanpin_sentence engine\tests\data\quanpin_sentence_cases.tsv [repeats] [lattice] [fuzzy=<rules>]
 // 只敲键和重置，从不选词，不写用户日志；仍请指向副本，别用正在用的数据目录。
 #include "../../core/data_path.h"
 #include "../../core/input_session.h"
@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        std::fprintf(stderr, "usage: eval_quanpin_sentence <cases.tsv> [repeats] [lattice]\n");
+        std::fprintf(stderr, "usage: eval_quanpin_sentence <cases.tsv> [repeats] [lattice] [fuzzy=<rules>]\n");
         return 2;
     }
     const auto cases = load_cases(argv[1]);
@@ -79,7 +79,17 @@ int main(int argc, char **argv)
 
     // 与出厂默认一致：词格整句 + 神经速度档 + 万象搭配加分（模型在数据目录里时）。
     // 第 3 个参数写 lattice 时只开词格，用来把神经重排的耗时单独拆出来。
-    const bool lattice_only = argc > 3 && std::string(argv[3]) == "lattice";
+    // 任意位置写 fuzzy=<规则位>（如 fuzzy=0x7ff）时带模糊音跑，看合法输入的首选有没有被模糊读音抢走。
+    bool lattice_only = false;
+    metasequoia::FuzzyPinyinOptions fuzzy;
+    for (int i = 3; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        if (arg == "lattice")
+            lattice_only = true;
+        else if (arg.rfind("fuzzy=", 0) == 0)
+            fuzzy.rules = static_cast<std::uint32_t>(std::strtoul(arg.c_str() + 6, nullptr, 0));
+    }
     SentenceAssociationOptions options;
     options.word_lattice = true;
     options.neural_keyboard = !lattice_only;
@@ -95,7 +105,8 @@ int main(int argc, char **argv)
     {
         metasequoia::InputSession session(SchemeType::Quanpin, setting.autocorrect_types);
         session.set_sentence_association(options);
-        std::printf("== %s ==\n", setting.name);
+        session.set_fuzzy_pinyin_options(fuzzy);
+        std::printf("== %s%s ==\n", setting.name, fuzzy.rules ? ", fuzzy on" : "");
         std::map<std::string, std::pair<int, int>> by_category;
         std::vector<double> per_key;
         for (const Case &item : cases)

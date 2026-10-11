@@ -1186,9 +1186,19 @@ void ShuangpinDictionary::reset_cache()
     }
 }
 
+void ShuangpinDictionary::set_fuzzy_pinyin(metasequoia::FuzzyPinyinOptions options)
+{
+    if (fuzzy_pinyin_.rules == options.rules)
+    {
+        return;
+    }
+    fuzzy_pinyin_ = options;
+    reset_cache();
+}
+
 quanpin::WordLatticeLookup ShuangpinDictionary::lattice_lookup(int limit)
 {
-    auto lookup = quanpin::make_lattice_db_lookup(quanpin_db_, quanpin_statement_cache_, limit);
+    auto lookup = quanpin::make_lattice_db_lookup(quanpin_db_, quanpin_statement_cache_, limit, fuzzy_pinyin_);
     if (!direct_span_cache_enabled_)
     {
         return lookup;

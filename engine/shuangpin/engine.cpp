@@ -1,10 +1,10 @@
 #include "engine.h"
 
+#include "../quanpin/fuzzy_pinyin.h"
 #include "shuangpin_query.h"
 #include "shuangpin_utils.h"
 
 #include <optional>
-#include <unordered_set>
 #include <algorithm>
 
 namespace
@@ -126,6 +126,8 @@ std::vector<WordItem> ShuangpinEngine::query(const QueryRequest &request)
                                                                             : SyllableHelpcodes{});
     // 直接辅助码开着时词格的跨度查询走与解析器共用的缓存，见 ShuangpinDictionary::lattice_lookup。
     dictionary_.set_direct_span_cache_enabled(request.enable_direct_helpcode);
+    // 整句同样要收模糊读音，见 QuanpinDictionary::set_fuzzy_pinyin。
+    dictionary_.set_fuzzy_pinyin(request.fuzzy_pinyin);
     auto candidates = query_unfiltered(request);
     dictionary_.filter_by_syllable_helpcodes(candidates);
     return candidates;
@@ -139,6 +141,7 @@ bool ShuangpinEngine::resolve_direct_helpcode(QueryRequest &request)
     }
     // 解码要用的搭配模型跟着整句选项走，先下发，和 query 的顺序一致。
     dictionary_.set_sentence_association(request.sentence_association);
+    dictionary_.set_fuzzy_pinyin(request.fuzzy_pinyin);
     return dictionary_.resolve_direct_helpcode(request);
 }
 
@@ -268,13 +271,6 @@ std::vector<WordItem> ShuangpinEngine::append_fuzzy(std::vector<WordItem> exact,
         fuzzy = HelpcodeUtils::filter_candidates_with_double_helpcodes(fuzzy, helpcodes, helpcodes_.get());
     else if (helpcodes.size() == 1)
         fuzzy = HelpcodeUtils::reorder_candidates_with_single_helpcode(fuzzy, helpcodes, helpcodes_.get());
-    std::unordered_set<std::string> seen;
-    for (const auto &item : exact)
-        seen.insert(item.word);
-    for (auto &item : fuzzy)
-        if (seen.insert(item.word).second)
-            exact.push_back(std::move(item));
-    std::stable_sort(exact.begin(), exact.end(),
-                     [](const auto &a, const auto &b) { return a.pinyin.size() > b.pinyin.size(); });
-    return exact;
+    return quanpin::merge_fuzzy_candidates(std::move(exact), std::move(fuzzy),
+                                           [](const WordItem &item) { return item.pinyin.size(); });
 }

@@ -155,8 +155,10 @@ class QuanpinDictionary
     std::optional<quanpin::LatticePath> lattice_best_path(const quanpin::Segments &cut);
     // 词格的跨度查询，套一层按（跨度, limit）的缓存：每多敲一个字母整句都要重解，同一输入的
     // 几种字面切分、主切与纠错读法之间也大量共用跨度，不缓存就一遍遍打同样的 SQL。结果与
-    // 直查逐行相同；随 reset_cache 清空（词库被写或换了开关时）。
-    quanpin::WordLatticeLookup lattice_lookup(int limit);
+    // 直查逐行相同；随 reset_cache 清空（词库被写或换了开关时）。with_fuzzy 为假时不收模糊读音，
+    // 见 lattice_best_path。
+    quanpin::WordLatticeLookup lattice_lookup(int limit, bool with_fuzzy = true);
+    void set_fuzzy_pinyin(metasequoia::FuzzyPinyinOptions options);
     bool user_prefers_reading(const std::string &key);
     static void append_unique_words(std::vector<WordItem> &result, const std::vector<WordItem> &extra);
     void mark_autocorrect_candidates(std::vector<WordItem> &candidates, const std::string &raw_input);
@@ -215,6 +217,8 @@ class QuanpinDictionary
     neural::LazySentenceModel neural_keyboard_model_;
     // 整句候选来源与去重补位选项，默认全关；由 set_sentence_association 随请求更新。
     SentenceAssociationOptions sentence_association_;
+    // 词格跨度查询带的模糊音规则，由 query 随请求更新，变化时清缓存（整句与裁决都按它算）。
+    metasequoia::FuzzyPinyinOptions fuzzy_pinyin_;
     // 神经重排的上下文（光标前已上屏的文本）。宿主没给就是空串。
     std::string rescoring_context_;
     std::unordered_map<std::string, sqlite3_stmt *> statement_cache_;

@@ -60,6 +60,8 @@ struct LatticeLexeme
     std::string key;
     std::string value;
     std::int64_t weight = 0;
+    // 从边分里扣掉的分（与路径分同单位）。模糊读音的行（key 与跨度不同）靠它让位于敲出的读音。
+    double penalty = 0.0;
 };
 
 // 句中辅助码：第 syllable 个音节（0 起，按 decode 收到的 syllables 计）只能解成 accept

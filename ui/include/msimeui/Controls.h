@@ -555,6 +555,10 @@ class CandidateList : public Visual
         // Horizontal only: items narrower than this are widened to it, content
         // stays leading. 0 keeps every item at its natural width.
         float minItemWidth = 0.0f;
+        // Measure exactly to the content: no 80 DIP minimum list width and no
+        // slack after the text beyond the annotation gap. Pair it with a
+        // contentPadRight equal to contentPadLeft + textPadLeft for even margins.
+        bool fitContent = false;
         float contentPadLeft = 5.0f;
         float contentPadRight = 5.0f;
         // Part of itemHeight that is the row's bottom padding. Lines stacked

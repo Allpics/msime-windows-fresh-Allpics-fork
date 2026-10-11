@@ -32,6 +32,7 @@ export type CandidateAppearanceConfig = {
   candidate_window_preedit_font_size?: number;
   cand_text_color?: string;
   page_size?: number;
+  candidate_window_fit_content?: boolean;
   candidate_window_follow_cursor?: boolean;
   candidate_fixed_badge?: boolean;
   candidate_fixed_badge_style?: string;
@@ -507,6 +508,9 @@ export function applyAppearanceConfig(
     previewPageSize = candidateAppearance.page_size;
     applyDropdownValue('candPageSizeBtn', 'candPageSizeMenu', String(candidateAppearance.page_size));
   }
+  if (typeof candidateAppearance?.candidate_window_fit_content === 'boolean') {
+    applyToggleState('candidateFitContentToggleBtn', candidateAppearance.candidate_window_fit_content);
+  }
   if (typeof candidateAppearance?.candidate_window_follow_cursor === 'boolean') {
     applyToggleState('candidateFollowCursorToggleBtn', candidateAppearance.candidate_window_follow_cursor);
   }
@@ -594,6 +598,9 @@ export async function setupAppearance() {
 
   // 候选项排列方式
   setupDropdownMenu('arrangeBtn', 'arrangeMenu', 'changeCandidateArrange');
+  setupToggleButton('candidateFitContentToggleBtn', (active) => {
+    postConfigUpdate('appearance.candidate_window_fit_content', active);
+  });
   setupToggleButton('candidateFollowCursorToggleBtn', (active) => {
     postConfigUpdate('appearance.candidate_window_follow_cursor', active);
   });

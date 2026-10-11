@@ -527,6 +527,9 @@ const std::string &GetConfiguredCandidateWindowLayout();
 bool SetConfiguredCandidateWindowLayout(const std::string &layout);
 bool GetConfiguredCandidateWindowFollowCursor();
 bool SetConfiguredCandidateWindowFollowCursor(bool enabled);
+// 候选框严格按文字宽度收紧；与皮肤 skin.toml 的 fit_content 取或，任一打开即生效。
+bool GetConfiguredCandidateWindowFitContent();
+bool SetConfiguredCandidateWindowFitContent(bool enabled);
 // 固定排位候选词徽标：总开关 + 样式枚举（"paperclip" | "pushpin" | "dot"）。
 bool GetConfiguredCandidateFixedBadge();
 bool SetConfiguredCandidateFixedBadge(bool enabled);

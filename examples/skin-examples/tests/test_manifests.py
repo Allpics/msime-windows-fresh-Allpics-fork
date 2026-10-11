@@ -53,6 +53,8 @@ class ManifestTests(unittest.TestCase):
                     self.assertIn(window["shadow"], ("none", "soft", "strong"))
                 if "page_arrows" in window:
                     self.assertIsInstance(window["page_arrows"], bool, "page_arrows")
+                if "fit_content" in window:
+                    self.assertIsInstance(window["fit_content"], bool, "fit_content")
                 if "font_family" in window:
                     # Mirrors the Server catalog: the name is pasted into a quoted CSS font-family value.
                     self.assertRegex(window["font_family"], r"^[^\x00-\x1f\x7f\"'\\,;{}<>`]+$")
@@ -78,6 +80,7 @@ class ManifestTests(unittest.TestCase):
                 self.assertEqual(data["schema_version"], 1)
                 self.assertEqual(data["id"], skin_id)
                 self.assertIsInstance(data.get("candidate_window", {}).get("page_arrows", True), bool)
+                self.assertIsInstance(data.get("candidate_window", {}).get("fit_content", True), bool)
 
 
 if __name__ == "__main__":

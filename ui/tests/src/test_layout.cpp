@@ -397,6 +397,30 @@ TEST_CASE(horizontal_candidates_are_widened_to_the_minimum_item_width)
     REQUIRE(list.MeasureInLayout({1000.0f, 1000.0f}).width < 90.0f);
 }
 
+TEST_CASE(fit_content_candidates_measure_without_minimum_width_or_slack)
+{
+    CandidateList list(28.0f);
+    list.SetOrientation(CandidateList::Orientation::Vertical);
+    list.SetItems({{L"1", L"a", L"", L""}});
+    // Without fitContent a short list is floored to 80 DIP.
+    REQUIRE_NEAR(list.MeasureInLayout({1000.0f, 1000.0f}).width, 80.0f);
+
+    CandidateList::Appearance appearance;
+    appearance.itemHeight = 28.0f;
+    appearance.fitContent = true;
+    appearance.contentPadLeft = 0.0f;
+    appearance.textPadLeft = 5.0f;
+    appearance.contentPadRight = 0.0f;
+    list.SetAppearance(appearance);
+    const float bare = list.MeasureInLayout({1000.0f, 1000.0f}).width;
+    REQUIRE(bare < 80.0f);
+
+    // The trailing padding is the only thing after the text, so mirroring the leading one adds exactly that much.
+    appearance.contentPadRight = 5.0f;
+    list.SetAppearance(appearance);
+    REQUIRE_NEAR(list.MeasureInLayout({1000.0f, 1000.0f}).width, bare + 5.0f);
+}
+
 TEST_CASE(vertical_candidate_translation_stays_on_the_same_line)
 {
     CandidateList list(28.0f);

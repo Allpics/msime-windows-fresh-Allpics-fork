@@ -115,6 +115,36 @@ TEST_CASE(candidate_skin_page_arrows_reject_non_boolean_values)
     Cleanup(root);
 }
 
+// fit_content resolves like page_arrows: the package's own value, else its base's default manifest, else off.
+TEST_CASE(candidate_skin_fit_content_resolves_like_page_arrows)
+{
+    const auto root = MakeSkinsRoot(L"fit-content");
+    REQUIRE(!CandidateSkinCatalog::kDefaultFitContent);
+    REQUIRE(!CandidateSkinCatalog::ResolveFitContent(root, "graphite", nullptr));
+
+    WriteDefaultSkin(root, "graphite", "[candidate_window]\nfit_content = true\n");
+    REQUIRE(CandidateSkinCatalog::ResolveFitContent(root, "graphite", nullptr));
+    REQUIRE(!CandidateSkinCatalog::ResolveFitContent(root, "fluent", nullptr));
+    // The two switches are independent.
+    REQUIRE(!CandidateSkinCatalog::ResolvePageArrows(root, "graphite", nullptr));
+
+    WriteExternalSkin(root, "inherit", "graphite", "");
+    WriteExternalSkin(root, "override", "graphite", "fit_content = false\n");
+    const auto inherit = CandidateSkinCatalog::Load(root, "inherit");
+    REQUIRE(inherit.has_value());
+    REQUIRE(!inherit->fitContent.has_value());
+    REQUIRE(CandidateSkinCatalog::ResolveFitContent(root, "inherit", &*inherit));
+    const auto explicitOff = CandidateSkinCatalog::Load(root, "override");
+    REQUIRE(explicitOff.has_value());
+    REQUIRE(!CandidateSkinCatalog::ResolveFitContent(root, "override", &*explicitOff));
+
+    WriteExternalSkin(root, "bad", "fluent", "fit_content = \"yes\"\n");
+    std::string error;
+    REQUIRE(!CandidateSkinCatalog::Load(root, "bad", &error).has_value());
+    REQUIRE(!error.empty());
+    Cleanup(root);
+}
+
 // skins/default holds the built-in skins' settings, not a skin package: the scan must not list it as a broken
 // external skin, and it cannot be selected as one either.
 TEST_CASE(candidate_skin_scan_skips_default_settings_folder)

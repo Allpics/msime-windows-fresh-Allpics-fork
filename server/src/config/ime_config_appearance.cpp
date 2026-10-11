@@ -207,6 +207,21 @@ bool SetConfiguredCandidateWindowFollowCursor(bool enabled)
     return true;
 }
 
+bool GetConfiguredCandidateWindowFitContent()
+{
+    return g_candidate_window_fit_content;
+}
+
+bool SetConfiguredCandidateWindowFitContent(bool enabled)
+{
+    if (!WriteConfiguredValue("appearance", "candidate_window_fit_content", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_candidate_window_fit_content = enabled;
+    return true;
+}
+
 const std::string &GetConfiguredUiBackend()
 {
     return g_ui_backend;

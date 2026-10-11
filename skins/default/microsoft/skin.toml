@@ -7,3 +7,5 @@ name = "微软 Microsoft"
 [candidate_window]
 # 候选框里的翻页箭头：与微软拼音一样默认打开。横排在候选右侧、隔一条分隔线，竖排在最后一行下方、与序号左对齐
 page_arrows = true
+# 候选框严格按文字所需的宽度收紧（默认关闭）：不垫出厂最小宽度，同一输入里也不只增不减
+fit_content = false

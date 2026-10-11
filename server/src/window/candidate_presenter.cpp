@@ -480,7 +480,7 @@ void CandidatePresenter::ApplySkin()
                 << GetConfiguredCandidateFont() << '|' << GetConfiguredCandidateFontSize() << '|'
                 << GetConfiguredCandidateWindowPreeditFontSize() << '|' << GetConfiguredCandidateWindowLayout() << '|'
                 << GetConfiguredCandidateTextColor() << '|' << GetConfiguredCandidateWindowPreeditStyle();
-    fingerprint << '|' << GetConfiguredCandidateEnglishFont();
+    fingerprint << '|' << GetConfiguredCandidateEnglishFont() << '|' << GetConfiguredCandidateWindowFitContent();
     // 同一个外部皮肤的 skin.toml 或图片改了，只有强制重载能看出来；带上重载代数让 D2D 也重读 manifest。
     fingerprint << '|' << GetCandidateSkinReloadRevision();
     for (const auto &font : GetConfiguredCandidateFallbackFonts())
@@ -526,6 +526,9 @@ void CandidatePresenter::ApplySkin()
         RebuildScene();
         lastSkinFingerprint_ = skinKey;
     }
+    fitContent_ = GetConfiguredCandidateWindowFitContent() ||
+                  CandidateSkinCatalog::ResolveFitContent(std::filesystem::path(skinsRoot), skinId,
+                                                          package ? &*package : nullptr);
     const float fontSize = static_cast<float>((std::max)(12, GetConfiguredCandidateFontSize()));
     if (baseSkin == "fluent")
     {
@@ -841,6 +844,10 @@ void CandidatePresenter::ApplySkin()
     appearance.textPadLeft = 5.0f;
     appearance.labelGap = tokens.labelGap;
     appearance.minItemWidth = tokens.minItemWidth;
+    // 收紧宽度时右侧留白与序号左侧的留白相同，卡片两边对称。
+    appearance.fitContent = fitContent_;
+    if (fitContent_)
+        appearance.contentPadRight = appearance.contentPadLeft + appearance.textPadLeft;
     appearance.selectedBarWidth = tokens.selectedBarWidth;
     appearance.selectedBarHeight = fontSize * tokens.selectedBarHeightEm;
     appearance.selectedBarInside = tokens.selectedBarInside;
@@ -962,7 +969,7 @@ void CandidatePresenter::ApplySkin()
     // 底边贴着卡片顶边、不与卡片重叠，按 align 贴卡片左/中/右，图片在盒内等比居中（contain）。
     decorationTopDip_ = 0.0f;
     decorationWidthDip_ = 0.0f;
-    cardMinWidthDip_ = kCandidateMinWidthDip;
+    cardMinWidthDip_ = fitContent_ ? 0.0f : kCandidateMinWidthDip;
     std::wstring decorationPath;
     std::wstring backgroundPath;
     const std::wstring packageRoot = package ? skinsRoot + L"\\" + string_to_wstring(package->id) + L"\\" : L"";
@@ -1565,7 +1572,10 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
         }
         const msimeui::RectF natural = impl_->card->GetBounds();
         const float maxCardWidthDip = (std::max)(cardMinWidthDip_, maxW - kShadowPadLeft - kShadowPadRight);
-        stickyCardWidthDip_ = (std::min)(StickyCardExtent(stickyCardWidthDip_, natural.width), maxCardWidthDip);
+        // fit_content 的卡片严格跟随文字宽度，只保留高度的只增不减。
+        stickyCardWidthDip_ = fitContent_
+                                  ? natural.width
+                                  : (std::min)(StickyCardExtent(stickyCardWidthDip_, natural.width), maxCardWidthDip);
         stickyCardHeightDip_ = StickyCardExtent(stickyCardHeightDip_, natural.height);
         if (stickyCardWidthDip_ > natural.width + 0.5f || stickyCardHeightDip_ > natural.height + 0.5f)
         {

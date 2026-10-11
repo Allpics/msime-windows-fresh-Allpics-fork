@@ -226,6 +226,7 @@ extern bool g_paired_punctuation_enabled;
 extern std::string g_punctuation_lock;
 extern std::string g_candidate_window_layout;
 extern bool g_candidate_window_follow_cursor;
+extern bool g_candidate_window_fit_content;
 extern std::string g_ui_backend;
 extern std::string g_ui_backend_active;
 extern std::string g_candidate_skin;

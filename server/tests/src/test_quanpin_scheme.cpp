@@ -1000,23 +1000,35 @@ std::filesystem::path CreateAutocorrectDatabase()
 }
 } // namespace
 
-TEST_CASE(QuanpinDictionaryAutocorrectPutsCorrectedCandidateFirst)
+TEST_CASE(QuanpinDictionaryAutocorrectPreservesDictionaryBackedMixedSpelling)
 {
     const auto db_path = CreateAutocorrectDatabase();
     QuanpinDictionary dictionary(test::Utf8(db_path));
     const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
 
-    const auto candidates = dictionary.query("sahng", "sa'h'n'g", both);
+    auto candidates = dictionary.query("sahng", "sa'h'n'g", both);
     REQUIRE(!candidates.empty());
-    // The corrected candidate leads, and its pinyin is the corrected key so
-    // that selection/weight updates land on the right dictionary entry.
+    REQUIRE_EQ(candidates.front().word, std::string("撒谎那个"));
+    REQUIRE_EQ(candidates.front().pinyin, std::string("sa'h'n'g"));
+    REQUIRE_EQ(candidates.front().canonical_pinyin, std::string("sa'huang'na'ge"));
+    REQUIRE(candidates.front().corrected_from.empty());
+    REQUIRE(std::any_of(candidates.begin(), candidates.end(), [](const WordItem &item) {
+        return item.word == "上" && item.pinyin == "shang" && item.corrected_from == "sahng";
+    }));
+
+    // Without a dictionary-backed literal word, the same letters remain a genuine typo.
+    sqlite3 *db = nullptr;
+    REQUIRE_EQ(sqlite3_open(test::Utf8(db_path).c_str(), &db), SQLITE_OK);
+    const int removed = sqlite3_exec(db, "DELETE FROM tbl_4_s;", nullptr, nullptr, nullptr);
+    sqlite3_close(db);
+    REQUIRE_EQ(removed, SQLITE_OK);
+    dictionary.reset_cache();
+    candidates = dictionary.query("sahng", "sa'h'n'g", both);
+    REQUIRE(!candidates.empty());
     REQUIRE_EQ(candidates.front().word, std::string("上"));
     REQUIRE_EQ(candidates.front().pinyin, std::string("shang"));
     REQUIRE_EQ(candidates.front().canonical_pinyin, std::string("shang"));
-    // The original greedy candidates stay behind as a fallback tail.
-    REQUIRE(std::any_of(candidates.begin(), candidates.end(),
-                        [](const WordItem &item) { return item.word == "撒谎那个"; }));
-    REQUIRE(candidates.front().word != "撒谎那个");
+    REQUIRE_EQ(candidates.front().corrected_from, std::string("sahng"));
 }
 
 TEST_CASE(QuanpinDictionaryAutocorrectNeighborKeySubstitution)

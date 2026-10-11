@@ -603,6 +603,23 @@ std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_ra
     {
         if (!candidates().empty())
         {
+            const auto &head = candidates().front();
+            if (quanpin::literal_mixed_pinyin_match(request().raw_input, head.pinyin, head.canonical_pinyin))
+            {
+                std::vector<size_t> boundaries;
+                size_t consumed = 0;
+                for (const auto &segment : quanpin::split_segments(head.pinyin))
+                {
+                    consumed += segment.size();
+                    boundaries.push_back(consumed);
+                }
+                if (consumed == request().raw_input.size())
+                    boundaries.pop_back();
+                return RebuildQuanpinDisplayAtBoundaries(typed, boundaries);
+            }
+        }
+        if (!candidates().empty())
+        {
             std::string display = BuildQuanpinDisplayFromLeadingCorrection(request(), candidates().front());
             if (!display.empty())
             {
@@ -933,7 +950,12 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
     // 长度消耗会剩下或多吞字母（buuhui 选「不会」剩个 i）。
     size_t consumed_letters = selected_pure_pinyin.size();
     const unsigned autocorrect_types = QuanpinAutocorrectTypes(request());
-    if (autocorrect_types != 0 && raw_input_without_helpcodes.find('\'') == std::string::npos)
+    const bool literal_mixed_prefix =
+        current_scheme_type() == SchemeType::Quanpin && !candidates().empty() &&
+        quanpin::literal_mixed_pinyin_match(raw_input_without_helpcodes, candidates().front().pinyin,
+                                            candidates().front().canonical_pinyin) &&
+        raw_input_without_helpcodes.compare(0, consumed_letters, selected_pure_pinyin) == 0;
+    if (autocorrect_types != 0 && !literal_mixed_prefix && raw_input_without_helpcodes.find('\'') == std::string::npos)
     {
         if (const auto aligned = quanpin::corrected_reading_raw_length(
                 raw_input_without_helpcodes, quanpin::split_segments(selected_pinyin), autocorrect_types))

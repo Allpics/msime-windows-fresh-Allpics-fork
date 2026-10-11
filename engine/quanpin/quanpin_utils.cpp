@@ -1,4 +1,5 @@
 #include "quanpin_utils.h"
+#include "quanpin_query.h"
 
 #include "autocorrect_table.h"
 #include "../common/helpcode_utils.h"
@@ -12,6 +13,43 @@
 
 namespace quanpin
 {
+unsigned literal_mixed_pinyin_match(const std::string &raw, const std::string &code, const std::string &canonical)
+{
+    if (raw.find('\'') != std::string::npos || canonical.empty())
+        return 0;
+    size_t consumed = 0;
+    for (const char ch : code)
+    {
+        if (ch != '\'')
+        {
+            if (consumed == raw.size() || raw[consumed++] != ch)
+                return 0;
+        }
+    }
+    const auto tail = raw.substr(consumed);
+    if (!tail.empty() && (tail.size() > 2 || !prefix_pinyin_set().count(tail) || intact_pinyin_set().count(tail)))
+        return 0;
+    const auto typed = split_segments(code);
+    const auto reading = split_segments(canonical);
+    if (typed.size() != reading.size())
+        return 0;
+    bool full = false;
+    bool initial = false;
+    for (size_t i = 0; i < typed.size(); ++i)
+    {
+        if (!intact_pinyin_set().count(reading[i]))
+            return 0;
+        if (typed[i] == reading[i])
+            full = true;
+        else if (typed[i].size() == 1 && !reading[i].empty() && typed[i][0] == reading[i][0] &&
+                 !intact_pinyin_set().count(typed[i]))
+            initial = true;
+        else
+            return 0;
+    }
+    return full && initial ? (tail.empty() ? 1u : 2u) : 0u;
+}
+
 namespace
 {
 struct SparsePinyinFallbackEntry

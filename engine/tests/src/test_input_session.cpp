@@ -1246,6 +1246,91 @@ void run_autocorrect_costlier_context_tests(const std::filesystem::path &data_di
     std::filesystem::remove_all(directory);
 }
 
+// 合法输入的等音节数字面切分按整句打分争领衔（arbitrate_literal_segmentations）。
+// yibananzhao 的最少音节规则平局时取较短首音节，落在 yi'ba'nan'zhao；fixture 只给
+// yi'ban'an'zhao 一侧词组（一般、按照），另一侧只有单字。词库目录没有 sc.lm，词格退回
+// 启发式打分（单字 ln(w/1e6)、词组 ln(w)+3×音节数），分差完全由权重决定，用例因此确定。
+void run_literal_segmentation_arbitration_tests(const std::filesystem::path &data_directory)
+{
+    require(quanpin::enumerate_min_segmentations("yibananzhao", 8).size() == 2,
+            "Both four-syllable readings of yibananzhao must be enumerated.");
+    require(quanpin::enumerate_min_segmentations("nihao", 8).size() == 1,
+            "An unambiguous input must have exactly one minimal segmentation.");
+
+    const std::filesystem::path directory = data_directory / "literal-segmentation";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_2_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_y VALUES('yi''ban', 'yb', '一般', 1000);");
+        database.execute("CREATE TABLE tbl_2_a(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_a VALUES('an''zhao', 'az', '按照', 1000);");
+        database.execute("CREATE TABLE tbl_1_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_y VALUES('yi', 'y', '一', 1000);");
+        database.execute("CREATE TABLE tbl_1_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_b VALUES('ba', 'b', '把', 1000);");
+        database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_n VALUES('nan', 'n', '难', 1000);");
+        database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_z VALUES('zhao', 'z', '找', 1000);");
+        // fanganhao：fan'gan'hao（主切）与 fang'an'hao 只差 ln(1000/600)=0.5，主切领衔，
+        // 另一读法的整句在分差以内，占第 2 位。
+        database.execute("CREATE TABLE tbl_2_f(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_f VALUES('fan''gan', 'fg', '反感', 1000);"
+                         "INSERT INTO tbl_2_f VALUES('fang''an', 'fa', '方案', 600);");
+        database.execute("CREATE TABLE tbl_1_h(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_h VALUES('hao', 'h', '好', 1000);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    SentenceAssociationOptions lattice_only;
+    lattice_only.word_lattice = true;
+    const auto has_word = [](const metasequoia::InputSession &target, const std::string &word) {
+        const auto &items = target.candidates();
+        return std::any_of(items.begin(), items.end(), [&](const WordItem &item) { return item.word == word; });
+    };
+
+    // 另一种切分的整句分高出一截：它领衔，预编辑跟着它分；原切分的整句分差太远，不占第 2 位。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0, true, true, true, paths);
+        session.set_sentence_association(lattice_only);
+        type(session, "yibananzhao");
+        require(!session.candidates().empty() && session.candidates().front().word == "一般按照",
+                "The better-scoring literal segmentation must lead.");
+        require(session.get_pinyin_segmentation_with_cases() == "yi'ban'an'zhao",
+                "The preedit must follow the leading segmentation.");
+        require(!has_word(session, "一把难找"), "A far-behind literal sentence must not be listed.");
+        (void)session.select_candidate(candidate_index(session, "一般"));
+        require(session.has_composition() && session.preedit() == "anzhao" &&
+                    session.candidates().front().word == "按照",
+                "Selecting a prefix of the leading segmentation must leave the rest of it.");
+    }
+    // 整句来源全关：没有整句可比，与改造前一致，仍按最少音节切分。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0, true, true, true, paths);
+        type(session, "yibananzhao");
+        require(session.get_pinyin_segmentation_with_cases() == "yi'ba'nan'zhao" && !has_word(session, "一般按照"),
+                "Without any sentence source the segmentation must not be re-arbitrated.");
+    }
+    // 主切领衔、另一读法分差以内：它的整句紧跟在第 2 位。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0, true, true, true, paths);
+        session.set_sentence_association(lattice_only);
+        type(session, "fanganhao");
+        const auto &candidates = session.candidates();
+        require(candidates.size() >= 2 && candidates[0].word == "反感好" && candidates[1].word == "方案好",
+                "A close runner-up segmentation must take the second slot.");
+        require(session.get_pinyin_segmentation_with_cases() == "fan'gan'hao",
+                "The preedit must stay on the leading segmentation.");
+    }
+
+    std::filesystem::remove_all(directory);
+}
+
 // 多字、漏字纠错的读音和原始字母不等长，选词时要按纠错切分记录的原始区间消耗字母，
 // 不能按读音长度：buuhui 选「不会」曾剩下一个 i，选「张」会把 zhngg 一起吞掉。
 void run_autocorrect_selection_consumption_tests(const std::filesystem::path &data_directory)
@@ -1263,6 +1348,11 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
             "A deletion correction must cover only the letters actually typed.");
     require(!quanpin::corrected_reading_raw_length("nihao", {"ni"}, all_types).has_value(),
             "A plain prefix of a legal input must keep the reading-length consumption.");
+    // 贪心切分在 jin 上卡死、要回溯才切得开的合法输入：曾被判成手误，「再」按 zaij -> zai 吞掉 j。
+    require(quanpin::is_complete_pinyin_input("zaijinuta") && quanpin::looks_like_jianpin_spelling("zaijinut"),
+            "A legal input that needs backtracking must still count as legal.");
+    require(!quanpin::corrected_reading_raw_length("zaijinuta", {"zai"}, all_types).has_value(),
+            "A plain prefix of a backtracking-only legal input must keep the reading-length consumption.");
 
     const std::filesystem::path directory = data_directory / "autocorrect-selection-consumption";
     std::filesystem::create_directories(directory);
@@ -1276,11 +1366,18 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
                          "INSERT INTO tbl_1_h VALUES('hui', 'h', '会', 900000);"
                          "INSERT INTO tbl_1_h VALUES('hao', 'h', '好', 900000);");
         database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_z VALUES('zhang', 'z', '张', 900000);");
+                         "INSERT INTO tbl_1_z VALUES('zhang', 'z', '张', 900000);"
+                         "INSERT INTO tbl_1_z VALUES('zai', 'z', '再', 900000);");
+        database.execute("CREATE TABLE tbl_1_j(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_j VALUES('ji', 'j', '激', 900000);");
+        database.execute("CREATE TABLE tbl_1_t(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_t VALUES('ta', 't', '他', 900000);");
         database.execute("CREATE TABLE tbl_1_g(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_g VALUES('guo', 'g', '国', 900000);");
         database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);");
+                         "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);"
+                         "INSERT INTO tbl_1_n VALUES('nu', 'n', '怒', 900000);"
+                         "INSERT INTO tbl_1_n VALUES('niu', 'n', '牛', 900000);");
         database.execute("CREATE TABLE tbl_2_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', '你好', 1000);");
     }
@@ -1323,6 +1420,16 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
         (void)session.select_candidate(candidate_index(session, "你"));
         require(session.has_composition() && session.preedit() == "hao",
                 "A plain prefix of a legal input must keep its consumption.");
+    }
+    // 要回溯才切得开的合法输入不进纠错：预编辑按字面切分，选「再」剩 jinuta。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, all_types, true, true, true, paths);
+        type(session, "zaijinuta");
+        require(session.get_pinyin_segmentation_with_cases() == "zai'ji'nu'ta",
+                "A legal input must be displayed by its literal segmentation.");
+        (void)session.select_candidate(candidate_index(session, "再"));
+        require(session.has_composition() && session.preedit() == "jinuta",
+                "Selecting a literal prefix must not consume letters of the next syllable.");
     }
 
     std::filesystem::remove_all(directory);
@@ -2410,6 +2517,7 @@ int run_test()
     run_autocorrect_context_user_choice_tests(data_directory);
     run_legal_input_correction_tests(data_directory);
     run_autocorrect_selection_consumption_tests(data_directory);
+    run_literal_segmentation_arbitration_tests(data_directory);
     run_autocorrect_costlier_context_tests(data_directory);
 
     run_autocorrect_generated_space_tests(data_directory);

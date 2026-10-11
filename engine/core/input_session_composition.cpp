@@ -412,6 +412,46 @@ std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
     return letters_rewritten ? cased : base;
 }
 
+// 首选是同一串字母的另一种字面切分时（yibananzhao 由 yi'ban'an'zhao 的「一般按照」领衔，
+// fangan 由 fang'an 的「方案」领衔），预编辑跟着首选分，而不是停在方案层的最少音节切分上，
+// 否则用户看着 yi'ba'nan'zhao 选「一般按照」。只认读音字母与敲的字母逐个相同、盖住整串、
+// 不带纠错标记的首选（辅助码、手动分隔符都不满足），而且音节数与方案层切分相同：那正是
+// 只差一处 n/ng 边界的等长歧义；音节数不同的读法（nue 的字面整词「怒鹅」nu'e）不在此列，
+// 预编辑照旧。否则返回空串。
+std::string BuildQuanpinDisplayFromLiteralHead(const QueryRequest &request, const WordItem &head)
+{
+    const std::string &cased = request.raw_input_with_cases.empty() ? request.raw_input : request.raw_input_with_cases;
+    if (!head.corrected_from.empty() || request.raw_input.find('\'') != std::string::npos ||
+        cased.size() != request.raw_input.size())
+    {
+        return {};
+    }
+    const auto syllables = quanpin::split_segments(head.pinyin);
+    const std::string &scheme_segmentation =
+        request.normalized_segmentation.empty() ? request.segmentation : request.normalized_segmentation;
+    if (syllables.size() < 2 || syllables.size() != quanpin::split_segments(scheme_segmentation).size())
+    {
+        return {};
+    }
+    std::vector<size_t> boundaries;
+    size_t end = 0;
+    for (const auto &syllable : syllables)
+    {
+        if (request.raw_input.compare(end, syllable.size(), syllable) != 0)
+        {
+            return {};
+        }
+        end += syllable.size();
+        boundaries.push_back(end);
+    }
+    if (end != request.raw_input.size())
+    {
+        return {};
+    }
+    boundaries.pop_back();
+    return RebuildQuanpinDisplayAtBoundaries(cased, boundaries);
+}
+
 // 合法输入上的纠错领衔时（ziazheliya 出「在这里呀」、jiuzheeyang 出「就这样」），预编辑
 // 按领衔读法分隔成 zia'zhe'li'ya、jiu'zhee'yang，而不是字面切分 zi'a'zhe'li'ya——后者
 // 和首选对不上。边界取纠错切分记录的原始区间（多字、漏字纠错和原始字母不等长）；
@@ -620,7 +660,11 @@ std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_ra
         }
         if (!candidates().empty())
         {
-            std::string display = BuildQuanpinDisplayFromLeadingCorrection(request(), candidates().front());
+            std::string display = BuildQuanpinDisplayFromLiteralHead(request(), candidates().front());
+            if (display.empty())
+            {
+                display = BuildQuanpinDisplayFromLeadingCorrection(request(), candidates().front());
+            }
             if (!display.empty())
             {
                 return display;

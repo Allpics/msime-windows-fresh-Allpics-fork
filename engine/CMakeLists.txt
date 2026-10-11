@@ -307,6 +307,10 @@ if(BUILD_TESTING)
     add_executable(bench_input_session tests/src/bench_input_session.cpp)
     target_link_libraries(bench_input_session PRIVATE MetasequoiaIme::Engine)
 
+    # Sentence-level segmentation evaluation (tests/data/quanpin_sentence_cases.tsv); run by hand, not by ctest.
+    add_executable(eval_quanpin_sentence tests/src/eval_quanpin_sentence.cpp)
+    target_link_libraries(eval_quanpin_sentence PRIVATE MetasequoiaIme::Engine)
+
     # Run this benchmark by hand with the released dictionaries and neural models.
     add_executable(bench_neural_rescore tests/src/bench_neural_rescore.cpp)
     target_link_libraries(bench_neural_rescore PRIVATE MetasequoiaIme::Engine)

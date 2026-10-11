@@ -403,6 +403,295 @@ void run_autocorrect_mixed_jianpin_tests(const std::filesystem::path &data_direc
     }
 }
 
+void run_literal_mixed_pinyin_tests(const std::filesystem::path &data_directory)
+{
+    const auto directory = data_directory / "literal-mixed-pinyin";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_3_w(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_w VALUES('wei''shen''me','wsm','为什么',100);"
+                         "CREATE TABLE tbl_2_w(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_w VALUES('wei''min','wm','为民',100000);"
+                         "CREATE TABLE tbl_1_w(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_w VALUES('wei','w','为',100000);"
+                         "CREATE TABLE tbl_3_k(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_k VALUES('kan''dian''ying','kdy','看电影',100);"
+                         "INSERT INTO tbl_3_k VALUES('kan''dian''ying','kdy','看电映',90);"
+                         "CREATE TABLE tbl_4_k(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_4_k VALUES('kan''dian''ying''qu','kdyq','看电影去',200);"
+                         "CREATE TABLE tbl_2_k(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_k VALUES('kan''yang','ky','看样',100000);"
+                         "INSERT INTO tbl_2_k VALUES('kan''yang','ky','看电影',90000);"
+                         "INSERT INTO tbl_2_k VALUES('kan''dao','kd','看到',1000);"
+                         "CREATE TABLE tbl_1_k(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_k VALUES('kan','k','看',100000);"
+                         "CREATE TABLE tbl_4_g(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_4_g VALUES('gai''zen''me''ban','gzmb','该怎么办',100);"
+                         "CREATE TABLE tbl_3_g(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_g VALUES('gai''zen''me','gzm','该怎么',1000);"
+                         "CREATE TABLE tbl_1_g(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_g VALUES('gai','g','该',100000);"
+                         "CREATE TABLE tbl_1_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_b VALUES('ban','b','办',100);"
+                         "INSERT INTO tbl_1_b VALUES('bang','b','帮',100);"
+                         "CREATE TABLE tbl_3_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_z VALUES('zhe''yang''zi','zyz','这样子',100);"
+                         "CREATE TABLE tbl_1_q(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_q VALUES('qu','q','去',1000);"
+                         "CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_n VALUES('ni','n','你',1000);"
+                         "CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_z VALUES('zhong','z','中',100);"
+                         "INSERT INTO tbl_1_z VALUES('zhe','z','这',100000);");
+    }
+    metasequoia::RuntimePaths paths;
+    paths.resources = paths.user_data = paths.cache = paths.dictionaries = directory;
+    struct Case
+    {
+        const char *key;
+        const char *word;
+    };
+    const std::array phrases{Case{"wei'shen'me", "为什么"}, Case{"kan'dian'ying", "看电影"},
+                             Case{"gai'zen'me'ban", "该怎么办"}, Case{"zhe'yang'zi", "这样子"}};
+    struct Boundary
+    {
+        const char *input;
+        const char *code;
+        const char *reading;
+        unsigned expected;
+    };
+    const std::array boundaries{
+        Boundary{"kandy", "kan'd'y", "kan'dian'ying", 1},
+        Boundary{"zheyzi", "zhe'y'zi", "zhe'yang'zi", 1},
+        Boundary{"ad", "a'd", "a'de", 1},
+        Boundary{"gaizenmbq", "gai'zen'm'b", "gai'zen'me'ban", 2},
+        Boundary{"gaizenmbzh", "gai'zen'm'b", "gai'zen'me'ban", 2},
+        Boundary{"gaizenmbch", "gai'zen'm'b", "gai'zen'me'ban", 2},
+        Boundary{"gaizenmbsh", "gai'zen'm'b", "gai'zen'me'ban", 2},
+        Boundary{"kandianying", "kan'dian'ying", "kan'dian'ying", 0},
+        Boundary{"kdy", "k'd'y", "kan'dian'ying", 0},
+        Boundary{"kan'd'y", "kan'd'y", "kan'dian'ying", 0},
+        Boundary{"kanmy", "kan'd'y", "kan'dian'ying", 0},
+        Boundary{"kandy", "kan'd'y", "kan'ying", 0},
+        Boundary{"bqng", "b'q'n'g", "ba'qu'ni'gu", 0},
+        Boundary{"gaizenmban", "gai'zen'm", "gai'zen'me", 0},
+        Boundary{"gaizenmbq", "gai'zen'm", "gai'zen'me", 0},
+        Boundary{"gaizenmbzho", "gai'zen'm'b", "gai'zen'me'ban", 0},
+        Boundary{"kandy", "kan'd'y", "", 0},
+    };
+    for (const auto &test : boundaries)
+        require(quanpin::literal_mixed_pinyin_match(test.input, test.code, test.reading) == test.expected,
+                (std::string("Unexpected literal mixed-pinyin boundary: ") + test.input + "/" + test.code).c_str());
+    const auto check = [&](metasequoia::InputSession &session, const std::string &input, const Case &test,
+                           const std::string &code, const std::string &tail = "") {
+        const auto &head = session.candidates().at(0);
+        if (head.word != test.word || head.canonical_pinyin != test.key || head.pinyin != code ||
+            !head.corrected_from.empty())
+        {
+            throw std::runtime_error("Original mixed-pinyin candidate lost its rank or metadata: " + input +
+                                     "; actual=" + head.word + "," + head.pinyin + "," + head.canonical_pinyin);
+        }
+        const auto expected_display = code + (tail.empty() ? "" : "'" + tail);
+        const auto display = session.get_pinyin_segmentation_with_cases();
+        if (input.find('\'') != std::string::npos)
+        {
+            auto letters = display;
+            letters.erase(std::remove(letters.begin(), letters.end(), '\''), letters.end());
+            auto expected_letters = code;
+            expected_letters.erase(std::remove(expected_letters.begin(), expected_letters.end(), '\''),
+                                   expected_letters.end());
+            require(session.raw_segmentation() == code && letters == expected_letters,
+                    "Manual delimiters must preserve raw boundaries and all display letters.");
+        }
+        else if (display != expected_display)
+            throw std::runtime_error("Unexpected mixed-pinyin display: " + input + "; expected=" + expected_display +
+                                     "; actual=" + display);
+        session.set_candidate_learning_enabled(false);
+        require(session.select_candidate(0).commit == test.word && session.preedit() == tail,
+                "Mixed-pinyin selection must consume exactly its original letters.");
+    };
+    for (const unsigned mask : {0u, 1u, 2u, 3u})
+    {
+        // 8 + 8 + 16 + 8 spellings, including all-full and all-initial controls, under all four switches.
+        for (const auto &phrase : phrases)
+        {
+            const auto syllables = quanpin::split_segments(phrase.key);
+            for (size_t bits = 0; bits < (size_t{1} << syllables.size()); ++bits)
+            {
+                auto matched = syllables;
+                std::string input;
+                for (size_t i = 0; i < matched.size(); ++i)
+                {
+                    if (bits & (size_t{1} << i))
+                        matched[i].resize(1);
+                    input += matched[i];
+                }
+                const auto code = quanpin::join_segments(matched);
+                for (const bool delimited : {false, true})
+                {
+                    metasequoia::InputSession session(SchemeType::Quanpin, mask, true, true, false, paths);
+                    for (int repetition = 0; repetition < 2; ++repetition)
+                    {
+                        type(session, delimited ? code : input);
+                        check(session, (delimited ? code : input) + "/mask=" + std::to_string(mask), phrase, code);
+                    }
+                }
+            }
+        }
+        for (const char *tail : {"q", "n", "zh", "ch", "sh"})
+        {
+            metasequoia::InputSession session(SchemeType::Quanpin, mask, true, true, false, paths);
+            SentenceAssociationOptions association;
+            association.word_lattice = true;
+            session.set_sentence_association(association);
+            type(session, std::string("gaizenmb") + tail);
+            check(session, std::string("gaizenmb") + tail, phrases[2], "gai'zen'm'b", tail);
+        }
+        for (const auto &prefix : std::array{Case{"dy", "看"}, Case{"y", "看到"}, Case{"", "看电影"}})
+        {
+            metasequoia::InputSession session(SchemeType::Quanpin, mask, true, true, false, paths);
+            type(session, "kand");
+            type(session, "y");
+            (void)session.handle_command(metasequoia::Command::Backspace);
+            type(session, "y");
+            session.set_candidate_learning_enabled(false);
+            require(session.select_candidate(candidate_index(session, prefix.word)).commit == prefix.word &&
+                        session.preedit() == prefix.key,
+                    "Selecting a literal prefix must not consume corrected spans.");
+        }
+        {
+            metasequoia::InputSession session(SchemeType::Quanpin, mask, true, true, false, paths);
+            type(session, "kandyq");
+            check(session, "kandyq", Case{"kan'dian'ying'qu", "看电影去"}, "kan'd'y'q");
+        }
+        {
+            metasequoia::InputSession session(SchemeType::Quanpin, mask, true, true, false, paths);
+            type(session, "gaizenmb");
+            session.set_candidate_learning_enabled(false);
+            require(session.select_candidate(candidate_index(session, "该怎么")).commit == "该怎么" &&
+                        session.preedit() == "b" && session.select_candidate(0).commit == "办",
+                    "Partial mixed-pinyin selection must retain the last initial.");
+        }
+    }
+    struct DoublePinyin
+    {
+        const ShuangpinProfile *profile;
+        std::array<const char *, 4> inputs;
+    };
+    const std::array double_pinyin{
+        DoublePinyin{&GetXiaoheShuangpinProfile(), {"wwufme", "kjdmyk", "gdzfmebj", "veyhzi"}},
+        DoublePinyin{&GetZiranmaShuangpinProfile(), {"wzufme", "kjdmyy", "glzfmebj", "veyhzi"}},
+        DoublePinyin{&GetShoudaoShuangpinProfile(), {"wmekme", "kjdnyg", "glzkmebj", "veyyzi"}},
+        DoublePinyin{&GetMicrosoftShuangpinProfile(), {"wzufme", "kjdmy;", "glzfmebj", "veyhzi"}},
+        DoublePinyin{&GetSogouShuangpinProfile(), {"wzufme", "kjdmy;", "glzfmebj", "veyhzi"}},
+        DoublePinyin{&GetZiguangShuangpinProfile(), {"wkiwme", "krdfy;", "gpzwmebr", "ueyszi"}},
+        DoublePinyin{&GetZhinengAbcShuangpinProfile(), {"wqvfme", "kjdwyy", "glzfmebj", "aeyhzi"}},
+        DoublePinyin{&GetGuobiaoShuangpinProfile(), {"wburme", "kfddyj", "gkzrmebf", "veygzi"}},
+        DoublePinyin{&GetPinyinJiajiaShuangpinProfile(), {"wwirme", "kfdjyq", "gszrmebf", "veygzi"}},
+    };
+    const auto type_double_pinyin = [](metasequoia::InputSession &session, const std::string &input) {
+        for (const char ch : input)
+            session.handle_engine_key(ch == ';' ? 0xBAu : static_cast<unsigned>(ch - 'a' + 'A'), 0, ch);
+    };
+    for (const auto &layout : double_pinyin)
+    {
+        for (const unsigned mask : {0u, 1u, 2u, 3u})
+        {
+            for (size_t i = 0; i < phrases.size(); ++i)
+            {
+                metasequoia::InputSession session(SchemeType::Shuangpin, *layout.profile, paths);
+                session.set_shuangpin_helpcode_enabled(false);
+                session.set_candidate_learning_enabled(false);
+                session.set_quanpin_autocorrect_types(mask);
+                for (int repetition = 0; repetition < 2; ++repetition)
+                {
+                    type_double_pinyin(session, layout.inputs[i]);
+                    require(!session.candidates().empty() && session.candidates().front().word == phrases[i].word &&
+                                session.candidates().front().canonical_pinyin == phrases[i].key &&
+                                session.candidates().front().corrected_from.empty() &&
+                                session.normalized_segmentation() == phrases[i].key,
+                            ("Mixed-pinyin ordering must preserve Shuangpin: " + layout.profile->name + "/" +
+                             layout.inputs[i] + "/mask=" + std::to_string(mask))
+                                .c_str());
+                    require(session.select_candidate(0).commit == phrases[i].word && session.preedit().empty(),
+                            "Shuangpin selection must consume exactly its two-key syllables.");
+                }
+            }
+            metasequoia::InputSession partial(SchemeType::Shuangpin, *layout.profile, paths);
+            partial.set_shuangpin_helpcode_enabled(false);
+            partial.set_candidate_learning_enabled(false);
+            partial.set_quanpin_autocorrect_types(mask);
+            type_double_pinyin(partial, layout.inputs[1]);
+            require(partial.select_candidate(candidate_index(partial, "看")).commit == "看" &&
+                        partial.preedit() == std::string(layout.inputs[1]).substr(2),
+                    "A Shuangpin prefix selection must retain the remaining two-key units.");
+        }
+    }
+    {
+        metasequoia::InputSession switching(SchemeType::Quanpin, 3u, false, true, false, paths);
+        type(switching, "kandy");
+        check(switching, "kandy before scheme switch", phrases[1], "kan'd'y");
+        switching.switch_scheme(SchemeType::Shuangpin);
+        switching.set_shuangpin_helpcode_enabled(false);
+        type_double_pinyin(switching, "kjdmyk");
+        require(switching.select_candidate(0).commit == "看电影" && switching.preedit().empty(),
+                "Switching to Shuangpin must discard Quanpin candidate state.");
+        switching.switch_scheme(SchemeType::Quanpin);
+        type(switching, "zheyzi");
+        check(switching, "zheyzi after scheme switch", phrases[3], "zhe'y'zi");
+    }
+    metasequoia::InputSession session(SchemeType::Quanpin, 3u, false, true, false, paths);
+    for (const char *input : {"kandy", "kanwy", "kandy"})
+    {
+        type(session, input);
+        metasequoia::InputSession fresh(SchemeType::Quanpin, 3u, false, true, false, paths);
+        type(fresh, input);
+        require(same_candidate_words(session, fresh), "A correction cache must not leak another input's literal rows.");
+        session.reset_state();
+    }
+    type(session, "kandy");
+    {
+        Database database(directory / "msime.db");
+        database.execute("UPDATE tbl_3_k SET weight=200 WHERE value='看电映';");
+    }
+    session.reset_cache();
+    session.recompute_candidates();
+    require(session.candidates().front().word == "看电映", "Literal candidates must retain their own frequency order.");
+    session.set_quanpin_autocorrect_types(0);
+    session.recompute_candidates();
+    require(session.candidates().front().word == "看电映",
+            "Changing correction switches must refresh candidate caches.");
+    session.set_quanpin_autocorrect_types(3);
+    session.set_fuzzy_pinyin_options({static_cast<std::uint32_t>(metasequoia::FuzzyPinyinRule::IAN_IANG)});
+    SentenceAssociationOptions association;
+    association.word_lattice = true;
+    session.set_sentence_association(association);
+    session.set_rescoring_context("请");
+    session.recompute_candidates();
+    require(session.candidates().front().word == "看电映" && session.candidates().front().corrected_from.empty(),
+            "Fuzzy/context reranking must retain original mixed-pinyin priority and metadata.");
+    require(session.pin_candidate(candidate_index(session, "看电影")).handled &&
+                session.candidates().front().word == "看电影",
+            "Explicit frequency pinning must still reorder words within the literal group.");
+    session.enable_fixed_positions();
+    require(session.set_candidate_position(candidate_index(session, "看样"), 1).handled &&
+                session.candidates().front().word == "看样",
+            "Explicit fixed positions must take precedence over the default mixed-pinyin order.");
+    metasequoia::InputSession cased(SchemeType::Quanpin, 3u, false, true, false, paths);
+    cased.handle_engine_key('K', 0, 'K');
+    type(cased, "andy");
+    require(cased.get_pinyin_segmentation_with_cases() == "Kan'd'y",
+            "The literal mixed-pinyin preedit must preserve the original letter cases.");
+    for (const char *typo : {"zhogn", "zhng", "bqng"})
+    {
+        metasequoia::InputSession corrected(SchemeType::Quanpin, 3u, false, true, false, paths);
+        type(corrected, typo);
+        require(candidate_index(corrected, std::string(typo) == "bqng" ? "帮" : "中") < corrected.candidates().size(),
+                "True typos must still produce correction candidates.");
+    }
+}
+
 // 光标驱动的前缀解码（PRD R2–R7，Stage 1）：候选与量化边界按「光标之前的完整音节
 // 单元前缀」重算。自建隔离词库，不与主 fixture 互相污染；Server（Stage 2）将以
 // set_caret + recompute_candidates 的同一方式消费这些入口。
@@ -2115,6 +2404,7 @@ int run_test()
     run_umlaut_alias_session_tests(data_directory);
     run_caret_prefix_session_tests(data_directory);
     run_autocorrect_mixed_jianpin_tests(data_directory);
+    run_literal_mixed_pinyin_tests(data_directory);
     run_autocorrect_context_ranking_tests(data_directory);
     run_autocorrect_context_layering_tests(data_directory);
     run_autocorrect_context_user_choice_tests(data_directory);

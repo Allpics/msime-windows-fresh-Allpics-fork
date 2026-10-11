@@ -26,6 +26,9 @@ const std::vector<std::string> &intact_pinyin_list();
 const std::unordered_set<std::string> &intact_pinyin_set();
 const std::unordered_set<std::string> &prefix_pinyin_set();
 bool has_only_complete_pinyin_segments(const Segments &segments);
+// 0: no literal mixed match; 1: whole input; 2: one unfinished 1-2-letter syllable remains.
+// Both full syllables and single-letter initials must match the candidate's canonical key.
+unsigned literal_mixed_pinyin_match(const std::string &raw, const std::string &code, const std::string &canonical);
 SyllableGraph build_syllable_graph(const std::string &pinyin);
 std::vector<Segments> enumerate_complete_segmentations(const SyllableGraph &graph, size_t path_limit = 32);
 std::vector<std::string> cut_one_piece_greedy(const std::string &pinyin, bool intact_only);

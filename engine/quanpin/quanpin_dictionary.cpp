@@ -271,6 +271,9 @@ SeriesQueryResolution resolve_series_query(const std::string &raw_input, const q
     // 合法输入带纠错读法时候选列表也变了，同样要另占缓存槽：关掉纠错后不能读到它。
     const char *cache_prefix = result.corrected_input ? "C:" : (result.legal_corrected_cuts.empty() ? "" : "L:");
     result.cache_key = cache_prefix + series_cache_key(raw_input, result.segmentation);
+    // The literal fallback depends on typed letters, even when two typos share a correction key.
+    if (result.corrected_input)
+        result.cache_key += '\x1f' + raw_input;
     return result;
 }
 
@@ -305,6 +308,23 @@ void keep_literal_whole_word_first(std::vector<WordItem> &candidates, const std:
     {
         std::rotate(candidates.begin(), literal, literal + 1);
     }
+}
+
+unsigned literal_mixed_match(const WordItem &item, const std::string &raw_input)
+{
+    return item.source == CandidateSource::Database || item.source == CandidateSource::UserDatabase
+               ? quanpin::literal_mixed_pinyin_match(raw_input, item.pinyin, item.canonical_pinyin)
+               : 0;
+}
+
+void keep_literal_mixed_words_first(std::vector<WordItem> &candidates, const std::string &raw_input)
+{
+    // Stable groups preserve dictionary/user order without manufacturing frequency weights.
+    const auto whole_end = std::stable_partition(candidates.begin(), candidates.end(), [&](const WordItem &item) {
+        return literal_mixed_match(item, raw_input) == 1;
+    });
+    std::stable_partition(whole_end, candidates.end(),
+                          [&](const WordItem &item) { return literal_mixed_match(item, raw_input) == 2; });
 }
 
 std::string escape_sql_text(std::string text)
@@ -477,12 +497,19 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
     }
 
     std::vector<WordItem> result;
+    std::vector<WordItem> literal_mixed;
     if (resolution.corrected_input)
     {
         result = query_series(raw_input, pinyin_segmentation_, resolution.corrected_segments);
         const std::string fallback_segmentation =
             segmentation.empty() ? quanpin::join_segments(segments) : segmentation;
-        append_unique_words(result, query_series(raw_input, fallback_segmentation, segments));
+        const auto literal = query_series(raw_input, fallback_segmentation, segments);
+        for (const auto &item : literal)
+        {
+            if (literal_mixed_match(item, raw_input))
+                literal_mixed.push_back(item);
+        }
+        append_unique_words(result, literal);
 
         // 上下文消解（阶段 1）：任一整句来源开着时直接解出主切、同档备选与前几条贵档
         // 读法的最佳路径分，扣掉各自的手误代价后裁决，静态词频只承担同档的解码前置过滤。
@@ -679,6 +706,11 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
     else
     {
         result = query_series(raw_input, pinyin_segmentation_, segments);
+        for (const auto &item : result)
+        {
+            if (literal_mixed_match(item, raw_input))
+                literal_mixed.push_back(item);
+        }
         if (!alternative_segmentations.empty())
         {
             result = merge_alternative_segmentations(raw_input, pinyin_segmentation_, segments,
@@ -690,6 +722,13 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
                 arbitrate_legal_corrections(raw_input, segments, resolution.legal_corrected_cuts, std::move(result));
         }
         keep_literal_whole_word_first(result, raw_input);
+    }
+    if (!literal_mixed.empty())
+    {
+        // Merge after reranking, with original metadata and frequency order winning same-word deduplication.
+        keep_literal_mixed_words_first(literal_mixed, raw_input);
+        append_unique_words(literal_mixed, result);
+        result = std::move(literal_mixed);
     }
     series_cache_.insert(resolution.cache_key, result);
     current_candidate_list_ = result;
@@ -1350,7 +1389,7 @@ void QuanpinDictionary::mark_autocorrect_candidates(std::vector<WordItem> &candi
     }
     for (auto &item : candidates)
     {
-        if (!item.corrected_from.empty())
+        if (!item.corrected_from.empty() || literal_mixed_match(item, raw_input))
         {
             continue;
         }
@@ -1941,6 +1980,8 @@ std::vector<WordItem> QuanpinDictionary::query(const std::string &raw_input, con
     }
     // Labeling runs after every mutation (including the fuzzy merge) so the
     // returned list and the published candidate list always agree.
+    if (fuzzy.rules)
+        keep_literal_mixed_words_first(result, raw_input);
     mark_autocorrect_candidates(result, raw_input);
     current_candidate_list_ = result;
     return result;

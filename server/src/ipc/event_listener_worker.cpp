@@ -155,6 +155,7 @@ struct Task
     int candidate_one_based_index = 0;
     int fixed_position = 0;
     int page_steps = 0;
+    bool toolbar_from_ime_enabled = false;
 };
 
 std::queue<Task> taskQueue;
@@ -590,6 +591,11 @@ void WorkerThread()
                 PostMessage(::global_hwnd, WM_HIDE_MAIN_WINDOW, 0, 0);
                 ClearState();
             }
+            break;
+        }
+
+        case TaskType::ToolbarLanguageToggle: {
+            HandleToolbarLanguageToggle(task.toolbar_from_ime_enabled);
             break;
         }
 
@@ -1293,6 +1299,22 @@ void EnqueueExitEnglishInputModeTask()
         std::lock_guard lock(queueMutex);
         Task task;
         task.type = TaskType::ExitEnglishInputMode;
+        taskQueue.push(std::move(task));
+    }
+    pipe_queueCv.notify_one();
+}
+
+void EnqueueToolbarLanguageToggleTask(bool from_ime_enabled)
+{
+    if (!pipe_running)
+    {
+        return;
+    }
+    {
+        std::lock_guard lock(queueMutex);
+        Task task;
+        task.type = TaskType::ToolbarLanguageToggle;
+        task.toolbar_from_ime_enabled = from_ime_enabled;
         taskQueue.push(std::move(task));
     }
     pipe_queueCv.notify_one();

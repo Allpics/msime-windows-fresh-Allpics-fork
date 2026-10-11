@@ -162,6 +162,7 @@ enum class TaskType
     RefreshCandidatePage,
     ResetInputSessionCache,
     ExitEnglishInputMode,
+    ToolbarLanguageToggle,
     // 神经整句重排在后台线程里算完了，候选顺序需要就地更新一次。
     ApplyRescoredOrder,
 };
@@ -213,6 +214,8 @@ void ExitCandidateSubPage();
 bool EnterDateTimeCandidatePage(const std::string &keyword);
 // 日期页上置顶、固定位置之后按新顺序重查，页码和高亮位留在原处。
 void RebuildDateTimeCandidatePage();
+// 工具栏语言按钮：开了中日英循环时和循环热键走同一步，否则仍是中英二态切换。
+void HandleToolbarLanguageToggle(bool from_ime_enabled);
 
 // event_listener.cpp
 bool SendUiLessCompositionToClient(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id);

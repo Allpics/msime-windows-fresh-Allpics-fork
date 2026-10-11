@@ -185,9 +185,9 @@ page_size = 6
 # 候选窗口跟随光标
 candidate_window_follow_cursor = true
 # 候选窗口排列方式，可选："vertical", "horizontal"
-candidate_window_layout = "vertical"
+candidate_window_layout = "horizontal"
 # 候选窗口与悬浮工具栏皮肤，可选："fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus", "microsoft"，或外部皮肤的 id
-candidate_skin = "willow_green"
+candidate_skin = "fluent"
 # 候选窗口顶部预编辑，可选："pinyin", "empty"
 #   pinyin -> 显示分词预编辑（与候选框当前行为一致）
 #   empty  -> 隐藏顶部预编辑行
@@ -305,7 +305,7 @@ fuzzy_uan_uang = false
 #
 [helpcode]
 # 双拼辅助码
-shuangpin_helpcode = true
+shuangpin_helpcode = false
 # 双拼辅助码方案，可选："lantian", "ziranma", "shouyou2_0", "shouyouplus", "xiaohe", "jiajia"，
 # 或 "custom/<文件名>"（数据目录 helpcodes\custom\<文件名>.txt 中的自定义方案）
 shuangpin_helpcode_schema = "lantian"
@@ -331,7 +331,7 @@ shuangpin_direct_helpcode = false
 shuangpin_direct_helpcode_slash = true
 shuangpin_direct_helpcode_uppercase = false
 # 全拼辅助码
-quanpin_helpcode = true
+quanpin_helpcode = false
 # 全拼辅助码方案，可选："lantian", "ziranma", "shouyou2_0", "shouyouplus", "xiaohe", "jiajia"，
 # 或 "custom/<文件名>"（数据目录 helpcodes\custom\<文件名>.txt 中的自定义方案）
 quanpin_helpcode_schema = "ziranma"

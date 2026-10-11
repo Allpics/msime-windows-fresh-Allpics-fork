@@ -128,7 +128,7 @@ bool g_floating_toolbar_auto_hide = false;
 int g_floating_toolbar_auto_hide_delay = kFloatingToolbarAutoHideDelayDefault;
 bool g_floating_toolbar_shadow = true;
 bool g_english_candidates_enabled = false;
-bool g_candidate_translations_enabled = true;
+bool g_candidate_translations_enabled = false;
 int g_english_mixed_input_min_chars = kEnglishMixedInputMinCharsDefault;
 bool g_cloud_candidates_enabled = true;
 // 整句候选来源与去重补位开关：词格、Google 和神经速度档默认开，神经效果档与去重补位默认关。
@@ -549,7 +549,7 @@ bool LoadImeConfig()
             g_floating_toolbar_shadow = tbl["general"]["floating_toolbar_shadow"].value_or(true);
         }
         g_english_candidates_enabled = tbl["general"]["cn_en_mixed_input"].value_or(false);
-        g_candidate_translations_enabled = tbl["general"]["candidate_translations"].value_or(true);
+        g_candidate_translations_enabled = tbl["general"]["candidate_translations"].value_or(false);
         {
             const int min_chars =
                 tbl["general"]["cn_en_mixed_input_min_chars"].value_or(kEnglishMixedInputMinCharsDefault);

@@ -72,6 +72,9 @@ $pinyinTable = Join-Path $RepoRoot (Join-Path $ServerDirectory 'assets\tables\pi
 $pinyinModel = Join-Path $RepoRoot (Join-Path $PinyinModelDirectory 'dict_pinyin.dat')
 $helpcodeSource = Join-Path $RepoRoot (Join-Path $HelpCodeDirectory 'helpcodes')
 $appIcon = Join-Path $RepoRoot (Join-Path $ServerDirectory 'src\resource\MetasequoiaIME.ico')
+# 输入法语言配置的图标，与 TSF DLL 里的 IDIS_METASEQUOIAIME 是同一个文件。安装器把它放到固定路径，
+# DLL 注册时优先用它，免得图标路径随版本目录变化（见 msime_setup.iss）。
+$tipIcon = Join-Path $RepoRoot (Join-Path $TsfDirectory 'image\msime.ico')
 $thirdPartyNotices = Join-Path $RepoRoot (Join-Path $NoticesDirectory 'THIRD_PARTY_NOTICES.txt')
 $license = Join-Path $RepoRoot 'LICENSE'
 $dictionaryDb = Join-Path $RepoRoot (Join-Path $DictionaryDirectory 'out\msime.db')
@@ -108,6 +111,7 @@ if ($missingServerPdb.Count -gt 0) {
 }
 Assert-PathExists -LiteralPath $serverConfig -Description 'Server config.toml'
 Assert-PathExists -LiteralPath $appIcon -Description '应用图标'
+Assert-PathExists -LiteralPath $tipIcon -Description '输入法语言配置图标 msime.ico'
 Assert-PathExists -LiteralPath $thirdPartyNotices -Description '第三方声明 THIRD_PARTY_NOTICES.txt'
 Assert-PathExists -LiteralPath $license -Description '许可证 LICENSE'
 Assert-PathExists -LiteralPath (Join-Path $webviewRoot 'shared') -Description '共享 WebView 消息契约'
@@ -316,6 +320,7 @@ if ($IncludeSymbols) {
     Copy-Item -LiteralPath $tsf64Pdb -Destination $targetTsf64 -Force
 }
 Copy-Item -LiteralPath $appIcon -Destination (Join-Path $PSScriptRoot 'MetasequoiaIME.ico') -Force
+Copy-Item -LiteralPath $tipIcon -Destination (Join-Path $PSScriptRoot 'MetasequoiaImeTip.ico') -Force
 # rime-ice is GPL-3.0 and requires attribution, and its content forms the bulk of msime.db, so the
 # notice has to reach the user's disk rather than only exist in the source repository.
 Copy-Item -LiteralPath $thirdPartyNotices -Destination (Join-Path $PSScriptRoot 'THIRD_PARTY_NOTICES.txt') -Force

@@ -29,6 +29,7 @@ try {
         'LICENSE',
         'server/assets/config/config.toml',
         'server/src/resource/MetasequoiaIME.ico',
+        'windows/image/msime.ico',
         'engine/helpcode/helpcodes/helpcode.txt',
         'engine/googlepinyinime-rev/data/dict_pinyin.dat',
         'MetasequoiaImeDict/out/msime.db',
@@ -64,8 +65,20 @@ try {
                          'server_exe/MetasequoiaImeServer.pdb',
                          'server_exe/MetasequoiaImeDictionaryReplay.pdb',
                          'app_data/helpcodes/helpcode.txt', 'default_skins/fluent/skin.toml',
-                         'THIRD_PARTY_NOTICES.txt', 'LICENSE.txt')) {
+                         'THIRD_PARTY_NOTICES.txt', 'LICENSE.txt', 'MetasequoiaImeTip.ico')) {
         if (-not (Test-Path (Join-Path $installer $file))) { throw "Missing packaged file: $file" }
+    }
+    # 语言配置图标必须在 TSF DLL 的 regserver 之前装好：DLL 注册时才看得到它，否则又会把图标
+    # 注册成随版本目录变化的 DLL 路径。32 位、64 位 DLL 各自找自己的上一级目录，两份都要有。
+    $issForIcon = [IO.File]::ReadAllText((Join-Path $installer 'msime_setup.iss'))
+    $dllEntry = $issForIcon.IndexOf('Source: "{#MySourceRoot}\tsf_dll\')
+    foreach ($root in @('{commonpf32}', '{commonpf64}')) {
+        $iconEntry = [regex]::Match($issForIcon,
+            'Source: "\{#MySourceRoot\}\\MetasequoiaImeTip\.ico";\s*\\\s*DestDir: "' + [regex]::Escape($root) + '\\metasequoiaime";')
+        if (-not $iconEntry.Success) { throw "MetasequoiaImeTip.ico is not installed to $root\metasequoiaime" }
+        if ($dllEntry -lt 0 -or $iconEntry.Index -gt $dllEntry) {
+            throw "MetasequoiaImeTip.ico for $root must be installed before the TSF DLL entries"
+        }
     }
     # 神经整句效果档模型由设置页按需下载，仓库的 neural-model/ 里有它也不能进安装包。
     if (Test-Path (Join-Path $installer 'app_data/sentence-model-desktop.safetensors')) {

@@ -102,6 +102,16 @@ Source: "{#MySourceRoot}\THIRD_PARTY_NOTICES.txt"; \
 Source: "{#MySourceRoot}\LICENSE.txt"; \
     DestDir: "{commonpf64}\metasequoiaime"; Flags: ignoreversion
 
+; 输入法语言配置（profile）的图标放在固定路径。TSF DLL 每次升级都换版本目录，图标若指向 DLL，
+; 注册表里的图标路径就跟着变；任务栏恰好在换目录时取不到图标，就改显示「简体」文字并一直沿用到
+; 资源管理器重启。DLL 注册时发现自己上一级目录有这个文件就改用它（windows/src/Register/Register.cpp），
+; 所以这两条必须排在下面两个 regserver 条目之前；32 位和 64 位 DLL 各按自己的上一级目录找，各放一份。
+Source: "{#MySourceRoot}\MetasequoiaImeTip.ico"; \
+    DestDir: "{commonpf32}\metasequoiaime"; Flags: ignoreversion
+
+Source: "{#MySourceRoot}\MetasequoiaImeTip.ico"; \
+    DestDir: "{commonpf64}\metasequoiaime"; Flags: ignoreversion
+
 ; TSF DLL 使用版本独立目录，避免升级时覆盖仍被进程加载的 DLL。
 ; PDB 与对应 DLL 放在同一目录，调试器可按二进制的内嵌路径自动找到符号。
 ; 只有 Prepare-PackageFiles.ps1 -IncludeSymbols 才会把 PDB 放进 tsf_dll\；默认本地打包不含符号，

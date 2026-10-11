@@ -152,44 +152,26 @@
   display: block;
 }
 
-/* 模型字段：输入框兼作下拉触发器，右侧是「获取模型」按钮。 */
+/* 模型字段：输入框和「查询模型」按钮并排 */
 .ai-model-row {
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 8px;
 }
 
-.ai-model-row .ai-model-dropdown {
-  position: relative;
+.ai-model-row input {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.ai-model-row .dropdown-toggle {
-  width: 100%;
-  min-width: 0;
-  padding: 9px 8px 9px 12px;
-}
-
-/* 覆盖 .ai-grid input 的独立输入框外观，让输入框融进下拉按钮。 */
-.ai-grid .ai-model-row .dropdown-toggle input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  font: inherit;
-  cursor: text;
-}
-
-.ai-grid .ai-model-row .dropdown-toggle input:focus {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
+.ai-model-row .ai-model-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: auto;
+  margin-top: 4px;
+  z-index: 10;
 }
 
 .ai-model-fetch-button {

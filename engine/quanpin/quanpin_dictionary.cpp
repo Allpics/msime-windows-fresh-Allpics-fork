@@ -321,6 +321,13 @@ unsigned literal_mixed_match(const WordItem &item, const std::string &raw_input)
                : 0;
 }
 
+// 读音就是 key 这条切分的行（整键块）。整句行按敲的读音（pinyin）认：词格整句的
+// canonical_pinyin 是它实际走的读音，开着模糊音时可能与切分不同（min 走成 ming）。
+bool reads_full_key(const WordItem &item, const std::string &key)
+{
+    return item.canonical_pinyin == key || (item.sentence_association && item.pinyin == key);
+}
+
 void keep_literal_mixed_words_first(std::vector<WordItem> &candidates, const std::string &raw_input)
 {
     // Stable groups preserve dictionary/user order without manufacturing frequency weights.
@@ -673,7 +680,7 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
                     std::vector<WordItem> winner_prefix;
                     for (auto &item : query_series(raw_input, winner_key, winner_segments))
                     {
-                        (item.canonical_pinyin == winner_key ? winner_full : winner_prefix).push_back(std::move(item));
+                        (reads_full_key(item, winner_key) ? winner_full : winner_prefix).push_back(std::move(item));
                     }
                     // 贵档胜者没有整词、也没有整句行时（整句来源只开了重排、模型没载入），
                     // 整键块是空的；不能让主切的行顶回首位，由胜者的最长前缀词领衔。
@@ -1246,7 +1253,7 @@ std::vector<WordItem> QuanpinDictionary::arbitrate_literal_segmentations(const s
     const std::string primary_key = quanpin::join_segments(segments);
     const std::string best_key = quanpin::join_segments(*best_cut);
     const auto is_sentence_of = [](const std::string &key) {
-        return [&key](const WordItem &item) { return item.canonical_pinyin == key; };
+        return [&key](const WordItem &item) { return reads_full_key(item, key); };
     };
     const bool alternative_leads = *best_score > *primary_score && !user_prefers_reading(primary_key);
     const double gap = alternative_leads ? *best_score - *primary_score : *primary_score - *best_score;
@@ -1296,7 +1303,7 @@ std::vector<WordItem> QuanpinDictionary::arbitrate_literal_segmentations(const s
     std::vector<WordItem> winner_prefix;
     for (auto &item : query_series(raw_input, best_key, *best_cut))
     {
-        (item.canonical_pinyin == best_key ? winner_full : winner_prefix).push_back(std::move(item));
+        (reads_full_key(item, best_key) ? winner_full : winner_prefix).push_back(std::move(item));
     }
     if (winner_full.empty())
     {
@@ -1319,7 +1326,7 @@ std::vector<WordItem> QuanpinDictionary::arbitrate_literal_segmentations(const s
     std::vector<WordItem> rest;
     for (auto &item : result)
     {
-        if (item.canonical_pinyin == primary_key)
+        if (reads_full_key(item, primary_key))
         {
             primary_sentences.push_back(std::move(item));
             continue;
@@ -1469,7 +1476,9 @@ std::optional<quanpin::LatticePath> QuanpinDictionary::lattice_best_path(const q
         };
         lattice_options.collocation_weight = sentence_association_.collocation_weight;
     }
-    const auto lookup = lattice_lookup(lattice_options.span_limit);
+    // 不带模糊音：这个分用来裁决切分与纠错，模糊读音只给敲定的切分多出整句，不参与投票。
+    // 带上它，字面读法会借模糊读音的分压过纠错（jiuzheeyang 的「就这恶言」压过「就这样」）。
+    const auto lookup = lattice_lookup(lattice_options.span_limit, false);
     auto cut_paths = quanpin::decode_word_lattice(cut, lookup, lattice_options);
     std::optional<quanpin::LatticePath> best;
     if (!cut_paths.empty())
@@ -1804,15 +1813,20 @@ void QuanpinDictionary::reset_cache()
     lattice_span_cache_.clear();
 }
 
-quanpin::WordLatticeLookup QuanpinDictionary::lattice_lookup(int limit)
+quanpin::WordLatticeLookup QuanpinDictionary::lattice_lookup(int limit, bool with_fuzzy)
 {
-    return [this, lookup = quanpin::make_lattice_db_lookup(db_, statement_cache_, limit),
-            limit](const quanpin::Segments &span) {
+    const auto fuzzy = with_fuzzy ? fuzzy_pinyin_ : metasequoia::FuzzyPinyinOptions{};
+    return [this, lookup = quanpin::make_lattice_db_lookup(db_, statement_cache_, limit, fuzzy), limit,
+            fuzzy](const quanpin::Segments &span) {
         // 超过上限整体清掉，免得一次长时间输入把内存撑大（同双拼的 direct_span_cache_）。
         constexpr std::size_t kLatticeSpanCacheLimit = 8192;
         std::string key = quanpin::join_segments(span);
         key.push_back('#');
         key += std::to_string(limit);
+        if (fuzzy.rules)
+        {
+            key += "#f";
+        }
         auto found = lattice_span_cache_.find(key);
         if (found == lattice_span_cache_.end())
         {
@@ -1824,6 +1838,18 @@ quanpin::WordLatticeLookup QuanpinDictionary::lattice_lookup(int limit)
         }
         return found->second;
     };
+}
+
+void QuanpinDictionary::set_fuzzy_pinyin(metasequoia::FuzzyPinyinOptions options)
+{
+    if (fuzzy_pinyin_.rules == options.rules)
+    {
+        return;
+    }
+    fuzzy_pinyin_ = options;
+    // 词格跨度、最佳路径分和按它们排出的候选列表都按旧规则算出。规则只在设置页改，
+    // 清一次比给每层缓存的键都带上规则简单，也不会让关掉模糊音后读到带模糊行的旧列表。
+    reset_cache();
 }
 
 void QuanpinDictionary::reset_sentence_cache()
@@ -2178,13 +2204,14 @@ std::vector<WordItem> QuanpinDictionary::fuzzy_candidates(const std::string &seg
 std::vector<WordItem> QuanpinDictionary::query(const std::string &raw_input, const std::string &segmentation,
                                                unsigned autocorrect, metasequoia::FuzzyPinyinOptions fuzzy)
 {
+    // 词格要按同一套规则收模糊读音，先于 query_exact 下发。
+    set_fuzzy_pinyin(fuzzy);
     auto result = query_exact(raw_input, segmentation, autocorrect);
     if (fuzzy.rules && !raw_input.empty())
     {
         // Keep ordinary cache slots free of preference-specific candidates.
         const auto typed =
             segmentation.empty() ? quanpin::join_segments(resolve_segments(raw_input, segmentation)) : segmentation;
-        append_unique_words(result, fuzzy_candidates(typed, fuzzy));
         // Specificity is how many typed letters a candidate accounts for, not the raw
         // length of its stored key: alternative cuts ("xi'e" for "xie", "you'di'an"
         // for "you'dian") and fuzzy variants carry apostrophes, so comparing pinyin
@@ -2197,8 +2224,7 @@ std::vector<WordItem> QuanpinDictionary::query(const std::string &raw_input, con
             }
             return letters;
         };
-        std::stable_sort(result.begin(), result.end(),
-                         [&](const WordItem &a, const WordItem &b) { return matched_letters(a) > matched_letters(b); });
+        result = quanpin::merge_fuzzy_candidates(std::move(result), fuzzy_candidates(typed, fuzzy), matched_letters);
     }
     // Labeling runs after every mutation (including the fuzzy merge) so the
     // returned list and the published candidate list always agree.

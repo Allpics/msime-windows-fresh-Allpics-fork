@@ -119,6 +119,20 @@ int main()
         insert_weighted("jian", "检", 500000);
         insert_weighted("ji'an", "吉安", 766925);
         insert_weighted("ji'an", "积案", 9420);
+        // 混排：权重取自出货词库。min 的生僻字权重为 0，旧实现把 ming 整组垫在它们后面。
+        insert_weighted("min", "民", 902697);
+        insert_weighted("min", "敏", 196615);
+        insert_weighted("min", "缗", 0);
+        insert_weighted("min", "黾", 0);
+        insert_weighted("ming", "明", 2864492);
+        insert_weighted("ming", "名", 1804559);
+        insert_weighted("ming", "瞑", 6405);
+        // 整句：lin'yi'bian 没有整词，词格要走模糊读音的 ling'yi（另一）才拼得出「另一边」。
+        insert_weighted("lin", "林", 1435296);
+        insert_weighted("ling", "另", 608814);
+        insert_weighted("yi", "一", 5000000);
+        insert_weighted("bian", "边", 800000);
+        insert_weighted("ling'yi", "另一", 50000);
         sqlite3_close(db);
         std::filesystem::create_directories(directory / "helpcodes");
         std::ofstream(directory / "helpcodes" / "helpcode.txt") << "中=ab\n宗=cd\n国=ef\n";
@@ -155,6 +169,29 @@ int main()
         const auto youdian_list = dictionary.query("youdian", "you'dian", 0u, fuzzy_on);
         require(youdian_list.at(0).word == "邮电" && position(youdian_list, "尤迪安") > 0,
                 "longer alternative key outranked the exact reading");
+        // 模糊读音按折后权重与敲出的读音混排：常用的「明」「名」进到「敏」前面，生僻字垫底，
+        // 敲出读音的首字「民」不让位。
+        const FuzzyPinyinOptions in_ing{static_cast<std::uint32_t>(FuzzyPinyinRule::IN_ING)};
+        const auto min_list = dictionary.query("min", "min", 0u, in_ing);
+        require(min_list.at(0).word == "民", "exact reading lost the lead");
+        require(position(min_list, "明") < position(min_list, "敏") &&
+                    position(min_list, "名") < position(min_list, "敏"),
+                "frequent fuzzy reading was not interleaved");
+        require(position(min_list, "明") < position(min_list, "缗") &&
+                    position(min_list, "敏") < position(min_list, "瞑"),
+                "fuzzy merge ignored weights");
+        require(min_list.at(position(min_list, "明")).fuzzy && !min_list.at(0).fuzzy, "fuzzy flag lost");
+        // 整句：词格收模糊读音的跨度，canonical 记真实读音，pinyin 仍是敲的。
+        SentenceAssociationOptions lattice_only;
+        lattice_only.word_lattice = true;
+        dictionary.set_sentence_association(lattice_only);
+        const auto sentence_list = dictionary.query("linyibian", "lin'yi'bian", 0u, in_ing);
+        const auto &sentence = sentence_list.at(position(sentence_list, "另一边"));
+        require(sentence.pinyin == "lin'yi'bian" && sentence.canonical_pinyin == "ling'yi'bian",
+                "fuzzy sentence identity lost");
+        require(!contains(dictionary.query("linyibian", "lin'yi'bian", 0u), "另一边"),
+                "fuzzy lattice leaked into exact cache");
+        dictionary.set_sentence_association({});
         require(quanpin::fuzzy_syllables("zh", {0x7ff}) == std::vector<std::string>{"zh"},
                 "incomplete initial changed");
         require(quanpin::fuzzy_syllables("bian", {1u << 6}) == std::vector<std::string>{"bian"},

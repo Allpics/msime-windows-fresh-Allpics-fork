@@ -194,11 +194,12 @@ std::vector<std::vector<LatticeEdge>> build_graph(const Segments &syllables, con
             }
             const auto &rows = pins.empty() ? cached->second : constrained_rows;
             const size_t take = (std::min)(rows.size(), static_cast<size_t>(std::max(0, options.span_limit)));
-            // 先验的分母：跨度内实际参与解码的那些行。行数被 span_limit 截断，
-            // 截掉的都是权重最低的尾巴，对和的影响可以忽略。
-            std::int64_t span_total = 0;
+            // 先验的分母：跨度内实际参与解码、读音相同的那些行。行数被 span_limit 截断，
+            // 截掉的都是权重最低的尾巴，对和的影响可以忽略。按读音分开求和：模糊音把别的
+            // 读音的行混进同一跨度，算进一个分母会把敲出读音的行的占比压低。
+            std::unordered_map<std::string, std::int64_t> reading_totals;
             for (size_t i = 0; i < take; ++i)
-                span_total += rows[i].weight > 0 ? rows[i].weight : 0;
+                reading_totals[rows[i].key] += rows[i].weight > 0 ? rows[i].weight : 0;
             for (size_t i = 0; i < take; ++i)
             {
                 const auto &row = rows[i];
@@ -212,13 +213,14 @@ std::vector<std::vector<LatticeEdge>> build_graph(const Segments &syllables, con
                 if (model)
                 {
                     edge.index = model->index(edge.word);
-                    edge.base_score =
-                        dictionary_tiebreak(edge.weight, options) + reading_prior(edge.weight, span_total, options);
+                    edge.base_score = dictionary_tiebreak(edge.weight, options) +
+                                      reading_prior(edge.weight, reading_totals[row.key], options);
                 }
                 else
                 {
                     edge.base_score = heuristic_log_prob(edge.weight, end - start, options);
                 }
+                edge.base_score -= row.penalty;
                 graph[start].push_back(std::move(edge));
             }
         }

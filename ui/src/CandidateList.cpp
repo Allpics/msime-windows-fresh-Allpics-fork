@@ -450,10 +450,12 @@ SizeF CandidateList::Measure(const SizeF &availableSize)
     const float gap = appearance_.itemGap;
     const bool horizontal = orientation_ == Orientation::Horizontal;
     std::vector<float> widths;
-    float maxWidth = 80.0f;
+    float maxWidth = appearance_.fitContent ? 0.0f : 80.0f;
     for (const auto &item : items_)
     {
-        const float textWidth = EstimateTextWidth(item.text, appearance_.fontSize) + 6.0f +
+        // fitContent keeps only the gap MeasureItem puts before an inline annotation.
+        const float textSlack = !appearance_.fitContent ? 6.0f : (item.annotation.empty() ? 0.0f : 4.0f);
+        const float textWidth = EstimateTextWidth(item.text, appearance_.fontSize) + textSlack +
                                 EstimateTextWidth(item.annotation, appearance_.annotationFontSize);
         const float translationWidth = EstimateTextWidth(item.translation, appearance_.fontSize * 0.78f);
         const float contentWidth =

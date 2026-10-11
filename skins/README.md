@@ -27,6 +27,7 @@
 | --- | --- |
 | `schema_version` / `id` / `name` | `id` 必须与目录名一致 |
 | `[candidate_window]` `page_arrows` | 候选框里是否显示翻页箭头（`true` / `false`，出厂与缺省都是 `false`） |
+| `[candidate_window]` `fit_content` | 候选框是否严格按文字所需的宽度收紧（`true` / `false`，出厂与缺省都是 `false`）。打开后不再垫出厂的最小宽度（D2D 160 DIP、WebView2 `7em`），同一次输入里后到的翻译等内容消失时宽度也立刻跟着缩回 |
 
 外部皮肤没写的开关沿用它 `base` 对应的这份清单。改完后在设置页刷新皮肤列表，或重新选择一次皮肤即可生效；设置页「外观」和「皮肤」里的候选框预览会一并显示或隐藏箭头。
 
@@ -62,7 +63,7 @@ my-skin/
 | `id` / `name` / `version` / `author` / `description` | 基本信息，`id` 建议与目录名一致 |
 | `base` | 继承的内置皮肤，如 `fluent`；未写的键沿用 base |
 | `[supports]` | `layouts`（`horizontal` / `vertical`）、`themes`（`dark` / `light`） |
-| `[candidate_window]` | `min_width_dip`、`corner_radius_dip`（0–32）、`border_width_dip`（0–4）、`item_corner_radius_dip`（高亮圆角，0–16）、`shadow`（`none` / `soft` / `strong`）、`font_family`（排在用户字体前面）、`page_arrows`（翻页箭头：横排在候选右侧，竖排在最后一行下方、与序号左对齐；不写时沿用 base 的[默认皮肤设置](#默认皮肤设置default)，出厂关闭） |
+| `[candidate_window]` | `min_width_dip`、`corner_radius_dip`（0–32）、`border_width_dip`（0–4）、`item_corner_radius_dip`（高亮圆角，0–16）、`shadow`（`none` / `soft` / `strong`）、`font_family`（排在用户字体前面）、`page_arrows`（翻页箭头：横排在候选右侧，竖排在最后一行下方、与序号左对齐；不写时沿用 base 的[默认皮肤设置](#默认皮肤设置default)，出厂关闭）、`fit_content`（卡片严格按文字宽度收紧，`min_width_dip` 与装饰图宽度仍然生效；不写时沿用 base 的默认皮肤设置，出厂关闭） |
 | `[candidate_window.decoration]` | 卡片上方的装饰图：`image`、`top_inset_dip`、`width_dip`、`align`（`left` / `center` / `right`） |
 | `[candidate_window.background]` | 卡片背景图：`image`、`fit`（`cover` / `contain` / `stretch`）、`opacity`（0–1） |
 | `[candidate.dark]` / `[candidate.light]` | 候选配色：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation`、`show_selected_bar`；细分配色 `candidate_text`、`preedit_text`、`preedit_caret`、`selected_text`、`selected_number`、`selected_translation`、`translation_pos`、`translation_separator`、`selected_translation_pos`、`selected_translation_separator`、`selected_bar`、`preedit_background`、`preedit_divider` |

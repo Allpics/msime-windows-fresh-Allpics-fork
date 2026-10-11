@@ -174,7 +174,9 @@ window.MsimeStickyCandidateCard = function (reset, key) {
   const follow = function (keptValue, natural) {
     return natural >= keptValue || natural < keptValue * kStickyShrinkRatio ? natural : keptValue;
   };
-  let width = follow(kept.width, rect.width);
+  // Skins with fit_content want the card exactly as wide as the text.
+  const fitContent = document.documentElement.dataset.fitContent === 'on';
+  let width = fitContent ? rect.width : follow(kept.width, rect.width);
   const maxWidth = Number.parseFloat(box.style.maxWidth);
   if (maxWidth > 0) width = Math.min(width, maxWidth);
   const height = follow(kept.height, rect.height);

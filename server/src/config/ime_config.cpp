@@ -182,6 +182,7 @@ bool g_paired_punctuation_enabled = true;
 std::string g_punctuation_lock = "follow";
 std::string g_candidate_window_layout = "vertical";
 bool g_candidate_window_follow_cursor = true;
+bool g_candidate_window_fit_content = false;
 std::string g_ui_backend = "d2d";
 std::string g_ui_backend_active = "d2d";
 std::string g_candidate_skin = "fluent";
@@ -667,6 +668,7 @@ bool LoadImeConfig()
         const std::string layout = tbl["appearance"]["candidate_window_layout"].value_or(std::string("vertical"));
         g_candidate_window_layout = layout == "horizontal" ? "horizontal" : "vertical";
         g_candidate_window_follow_cursor = tbl["appearance"]["candidate_window_follow_cursor"].value_or(true);
+        g_candidate_window_fit_content = tbl["appearance"]["candidate_window_fit_content"].value_or(false);
         g_ui_backend = NormalizeSmallWindowUiBackend(tbl["appearance"]["ui_backend"].value_or(std::string("d2d")));
         const std::string skin = tbl["appearance"]["candidate_skin"].value_or(std::string("fluent"));
         g_candidate_skin = IsValidCandidateSkinId(skin) ? skin : "fluent";

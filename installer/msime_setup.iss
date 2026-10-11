@@ -1688,10 +1688,25 @@ begin
   end;
 end;
 
+{ 旧版设置页的「设为默认」写的是「替代默认输入法」。卸载后它仍指向水杉，系统设置里
+  就残留一个不存在的输入法；只清指向水杉的那一项，用户自己选的别的输入法不动。}
+procedure ClearOurInputMethodOverride;
+var
+  OverrideId: String;
+begin
+  if RegQueryStringValue(HKCU, 'Control Panel\International\User Profile',
+    'InputMethodOverride', OverrideId) and
+    (CompareText(OverrideId,
+      '0804:{E3062E9A-D834-4637-8958-ED8CFA427D01}{4D59B1B4-D503-44AE-9259-BAD9BB2778AB}') = 0) then
+    RegDeleteValue(HKCU, 'Control Panel\International\User Profile',
+      'InputMethodOverride');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    ClearOurInputMethodOverride;
     DeleteWatchdogLogonTask;
     RegDeleteValue(
       HKLM,

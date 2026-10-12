@@ -391,7 +391,7 @@ TEST_CASE(QuanpinHelpcodeDetectionUsesSharedUtilsRules)
 
 TEST_CASE(QuanpinCorrectionPrefersFewerSegments)
 {
-    const auto cuts = quanpin::cut_pinyin_by_mode("keneng", "correction");
+    const auto cuts = quanpin::cut_pinyin_by_mode("keneng", "correction", true);
     REQUIRE(!cuts.empty());
     REQUIRE_EQ(quanpin::join_segments(cuts.front()), std::string("ke'neng"));
 }
@@ -407,7 +407,7 @@ TEST_CASE(QuanpinCorrectionNormalizesTransposedPinyinLetters)
 
     for (const auto &[typed, expected] : cases)
     {
-        const auto cuts = quanpin::cut_pinyin_by_mode(typed, "correction");
+        const auto cuts = quanpin::cut_pinyin_by_mode(typed, "correction", true);
         REQUIRE(!cuts.empty());
         const auto actual = quanpin::join_segments(cuts.front());
         if (actual != expected)
@@ -420,19 +420,19 @@ TEST_CASE(QuanpinCorrectionNormalizesTransposedPinyinLetters)
 
 TEST_CASE(QuanpinCorrectionHandlesContinuousAndManuallySegmentedInput)
 {
-    const auto continuous = quanpin::cut_pinyin_by_mode("woxainxin", "correction");
+    const auto continuous = quanpin::cut_pinyin_by_mode("woxainxin", "correction", true);
     REQUIRE(!continuous.empty());
     REQUIRE_EQ(quanpin::join_segments(continuous.front()), std::string("wo'xian'xin"));
 
-    const auto manual = quanpin::cut_pinyin_by_mode("wo'xain'xin", "correction");
+    const auto manual = quanpin::cut_pinyin_by_mode("wo'xain'xin", "correction", true);
     REQUIRE(!manual.empty());
     REQUIRE_EQ(quanpin::join_segments(manual.front()), std::string("wo'xian'xin"));
 
-    const auto continuous_jv = quanpin::cut_pinyin_by_mode("wojv", "correction");
+    const auto continuous_jv = quanpin::cut_pinyin_by_mode("wojv", "correction", true);
     REQUIRE(!continuous_jv.empty());
     REQUIRE_EQ(quanpin::join_segments(continuous_jv.front()), std::string("wo'ju"));
 
-    const auto manual_jv = quanpin::cut_pinyin_by_mode("wo'jv", "correction");
+    const auto manual_jv = quanpin::cut_pinyin_by_mode("wo'jv", "correction", true);
     REQUIRE(!manual_jv.empty());
     REQUIRE_EQ(quanpin::join_segments(manual_jv.front()), std::string("wo'ju"));
 }
@@ -446,7 +446,7 @@ TEST_CASE(QuanpinCorrectionAppliesSuffixRulesToEveryValidPinyinPrefix)
 
     for (const auto &[typed, expected] : cases)
     {
-        const auto cuts = quanpin::cut_pinyin_by_mode(typed, "correction");
+        const auto cuts = quanpin::cut_pinyin_by_mode(typed, "correction", true);
         REQUIRE(!cuts.empty());
         REQUIRE_EQ(quanpin::join_segments(cuts.front()), expected);
     }
@@ -454,28 +454,28 @@ TEST_CASE(QuanpinCorrectionAppliesSuffixRulesToEveryValidPinyinPrefix)
 
 TEST_CASE(QuanpinCorrectionRetainsAmbiguousEhngInterpretations)
 {
-    const auto cuts = quanpin::cut_pinyin_by_mode("cehng", "correction");
+    const auto cuts = quanpin::cut_pinyin_by_mode("cehng", "correction", true);
     REQUIRE_EQ(cuts.size(), static_cast<size_t>(2));
     REQUIRE_EQ(quanpin::join_segments(cuts[0]), std::string("cheng"));
     REQUIRE_EQ(quanpin::join_segments(cuts[1]), std::string("ceng"));
 
-    const auto bare = quanpin::cut_pinyin_by_mode("ehng", "correction");
+    const auto bare = quanpin::cut_pinyin_by_mode("ehng", "correction", true);
     REQUIRE_EQ(bare.size(), static_cast<size_t>(1));
     REQUIRE_EQ(quanpin::join_segments(bare[0]), std::string("heng"));
 
-    const auto extra_h = quanpin::cut_pinyin_by_mode("behng", "correction");
+    const auto extra_h = quanpin::cut_pinyin_by_mode("behng", "correction", true);
     REQUIRE(!extra_h.empty());
     REQUIRE_EQ(quanpin::join_segments(extra_h.front()), std::string("beng"));
 }
 
 TEST_CASE(QuanpinCorrectionRetainsAmbiguousAhngInterpretations)
 {
-    const auto cuts = quanpin::cut_pinyin_by_mode("ahng", "correction");
+    const auto cuts = quanpin::cut_pinyin_by_mode("ahng", "correction", true);
     REQUIRE_EQ(cuts.size(), static_cast<size_t>(2));
     REQUIRE_EQ(quanpin::join_segments(cuts[0]), std::string("hang"));
     REQUIRE_EQ(quanpin::join_segments(cuts[1]), std::string("ang"));
 
-    const auto prefixed = quanpin::cut_pinyin_by_mode("zahng", "correction");
+    const auto prefixed = quanpin::cut_pinyin_by_mode("zahng", "correction", true);
     REQUIRE_EQ(prefixed.size(), static_cast<size_t>(2));
     REQUIRE_EQ(quanpin::join_segments(prefixed[0]), std::string("zhang"));
     REQUIRE_EQ(quanpin::join_segments(prefixed[1]), std::string("zang"));
@@ -483,7 +483,7 @@ TEST_CASE(QuanpinCorrectionRetainsAmbiguousAhngInterpretations)
 
 TEST_CASE(QuanpinCorrectionCarriesAmbiguousPathsThroughContinuousInput)
 {
-    const auto cuts = quanpin::cut_pinyin_by_mode("wocehng", "correction");
+    const auto cuts = quanpin::cut_pinyin_by_mode("wocehng", "correction", true);
     REQUIRE_EQ(cuts.size(), static_cast<size_t>(2));
     REQUIRE_EQ(quanpin::join_segments(cuts[0]), std::string("wo'cheng"));
     REQUIRE_EQ(quanpin::join_segments(cuts[1]), std::string("wo'ceng"));
@@ -491,7 +491,7 @@ TEST_CASE(QuanpinCorrectionCarriesAmbiguousPathsThroughContinuousInput)
 
 TEST_CASE(QuanpinGreedyModeDoesNotApplyLetterCorrections)
 {
-    const auto cuts = quanpin::cut_pinyin_by_mode("haun", "greedy");
+    const auto cuts = quanpin::cut_pinyin_by_mode("haun", "greedy", true);
     REQUIRE(cuts.empty());
 }
 
@@ -697,13 +697,16 @@ TEST_CASE(QuanpinAutocorrectCutTypeBitSwitchMatrix)
     REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("shabg", neighbor_only)), std::string("shang"));
     REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("shabg", both)), std::string("shang"));
 
-    // "sshang" (doubled s) is an insertion fix; only that bit may correct it.
-    REQUIRE(quanpin::autocorrect_cut("sshang", none).empty());
-    REQUIRE(quanpin::autocorrect_cut("sshang", transposition_only).empty());
-    REQUIRE(quanpin::autocorrect_cut("sshang", neighbor_only).empty());
-    REQUIRE(quanpin::autocorrect_cut("sshang", quanpin::kAutocorrectDeletion).empty());
-    REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("sshang", quanpin::kAutocorrectInsertion)),
+    // "sghang" (a QWERTY neighbor of h inserted between s and h) is an insertion
+    // fix; only that bit may correct it. A doubled key ("sshang") is no longer
+    // an insertion key (the rule was narrowed to QWERTY neighbors).
+    REQUIRE(quanpin::autocorrect_cut("sghang", none).empty());
+    REQUIRE(quanpin::autocorrect_cut("sghang", transposition_only).empty());
+    REQUIRE(quanpin::autocorrect_cut("sghang", neighbor_only).empty());
+    REQUIRE(quanpin::autocorrect_cut("sghang", quanpin::kAutocorrectDeletion).empty());
+    REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("sghang", quanpin::kAutocorrectInsertion)),
                std::string("shang"));
+    REQUIRE(quanpin::autocorrect_cut("sshang", quanpin::kAutocorrectInsertion).empty());
 }
 
 TEST_CASE(QuanpinJianpinShapeGuardBlocksCorrection)
@@ -1115,6 +1118,14 @@ TEST_CASE(QuanpinDictionaryAutocorrectInsertionTypo)
     const auto legacy = dictionary.query("sghang", "", legacy_bits);
     REQUIRE(std::none_of(legacy.begin(), legacy.end(),
                          [](const WordItem &item) { return item.corrected_from == "sghang"; }));
+
+    // mask=0 端到端：纠错全关时同一输入不得产出任何纠错标记（链路 B 的手误别名
+    // 也跟开关走，此前空切分入口会无条件改写）。
+    const auto off = dictionary.query("sghang", "", 0u);
+    REQUIRE(std::none_of(off.begin(), off.end(), [](const WordItem &item) { return !item.corrected_from.empty(); }));
+    const auto off_alias = dictionary.query("sahng", "", 0u);
+    REQUIRE(std::none_of(off_alias.begin(), off_alias.end(),
+                         [](const WordItem &item) { return !item.corrected_from.empty(); }));
 }
 
 TEST_CASE(QuanpinDictionaryAutocorrectAmbiguousDisambiguation)

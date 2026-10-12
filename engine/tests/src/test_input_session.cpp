@@ -6,6 +6,7 @@
 #include "../../contracts/dictionary/format.h"
 #include "../../quanpin/quanpin_query.h"
 #include "../../quanpin/quanpin_utils.h"
+#include "../../schemes/quanpin_scheme.h"
 #include "../../shuangpin/shuangpin_profile.h"
 
 #include <sqlite3.h>
@@ -247,6 +248,21 @@ void run_umlaut_alias_session_tests(const std::filesystem::path &data_directory)
         const auto found = find_candidate_index(session, "略");
         require(found < session.candidates().size() && session.candidates()[found].corrected_from.empty(),
                 "The standard spelling 'lve' must stay unmarked.");
+    }
+
+    // R2 例外：纠错全关时 ü 归一（非手误）仍然生效——nue -> nve、lve 直接命中。
+    // 只断言可达（nue 另有 nu'e 读法与它竞争，谁领衔由词频裁决，与开关无关）。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0u, true, true, true, paths);
+        type(session, "nue");
+        require(find_candidate_index(session, "虐") < session.candidates().size(),
+                "The ü alias rewrite must stay active for 'nue' with autocorrection off.");
+    }
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0u, true, true, true, paths);
+        type(session, "lve");
+        require(find_candidate_index(session, "略") < session.candidates().size(),
+                "The standard 'lve' spelling must stay reachable with autocorrection off.");
     }
 
     // AC3：jqxy 系既有归一从无标变带标（行为变更），标准拼法无标。
@@ -675,8 +691,11 @@ void run_literal_mixed_pinyin_tests(const std::filesystem::path &data_directory)
                 session.candidates().front().word == "看电影",
             "Explicit frequency pinning must still reorder words within the literal group.");
     session.enable_fixed_positions();
-    require(session.set_candidate_position(candidate_index(session, "看样"), 1).handled &&
-                session.candidates().front().word == "看样",
+    // 用「看到」（输入字面就能命中的混合简拼候选）。此前这里用「看样」——它靠
+    // 生成式远键插入 kand->kan 与简拼尾 y 组合出 kan'y 才出现；本任务移除远键
+    // 插入后该读法不再存在，改用一个不依赖它的候选验固定位置优先级。
+    require(session.set_candidate_position(candidate_index(session, "看到"), 1).handled &&
+                session.candidates().front().word == "看到",
             "Explicit fixed positions must take precedence over the default mixed-pinyin order.");
     metasequoia::InputSession cased(SchemeType::Quanpin, 3u, false, true, false, paths);
     cased.handle_engine_key('K', 0, 'K');
@@ -930,8 +949,8 @@ void run_autocorrect_context_user_choice_tests(const std::filesystem::path &data
     }
 }
 
-// 合法输入上的手误：ziazheliya 切成 zi'a'zhe'li'ya、jioa 切成 ji'o'a、jiuzheeyang 切成
-// jiu'zhe'e'yang，每一段都合法，纠错入口的闸原本把它们整个挡在外面。现在按噪声信道
+// 合法输入上的手误：ziazheliya 切成 zi'a'zhe'li'ya、jioa 切成 ji'o'a、niohao 切成
+// ni'o'hao，每一段都合法，纠错入口的闸原本把它们整个挡在外面。现在按噪声信道
 // 整句打分：词格路径分 - 每处纠正的代价（换位 2.0，多字/漏字 3.0），原读法代价 0。
 // fixture 无 sc.lm，词格走启发式
 // （单字 ln(w/1e6)，词组 ln(w)+3×音节数），下面每组的分数都按它算好写在注释里。
@@ -963,8 +982,8 @@ void run_legal_input_correction_tests(const std::filesystem::path &data_director
     require(readings("lia", {"lia"}, transposition).empty(),
             "A single rare syllable has no context and must stay uncorrected.");
     require(
-        offers(readings("jiuzheeyang", {"jiu", "zhe", "e", "yang"}, quanpin::kAutocorrectInsertion), "jiu'zhe'yang"),
-        "An extra letter that splits off a zero-initial syllable must offer the corrected reading.");
+        offers(readings("niohao", {"ni", "o", "hao"}, quanpin::kAutocorrectInsertion), "ni'hao"),
+        "An extra QWERTY-neighbor letter that splits off a zero-initial syllable must offer the corrected reading.");
     require(readings("ziazheli", {"zi", "a", "zhe", "li"}, quanpin::kAutocorrectNeighbor).empty(),
             "Neighbor substitutions must stay off on legal input.");
     require(
@@ -1075,19 +1094,18 @@ void run_legal_input_correction_tests(const std::filesystem::path &data_director
         require(session.get_pinyin_segmentation_with_cases() == "jioa",
                 "A single corrected syllable must drop the literal ji'o'a separators.");
     }
-    // 多打一个 e（改变字母数，代价 3.0）：就这样 = ln5000+9-3 = 14.5，就这恶养全是单字
-    // = -2.2。字面切分不是真词，
-    // 纠错领衔，原读法紧跟在第 2 位；预编辑按纠错切分的原始区间分隔，整词上屏吃掉全部字母。
+    // 多打一个邻键元音（o 是 i 的邻键）：zaiozheli 字面切成 zai'o'zhe'li 全合法，
+    // 纠错读法 zai'zhe'li 命中「在这里」并带 corrected_from（双击重复键已不算多字
+    // 纠错，见 test_pinyin 的 shangg 断言；这里改用邻键插入验长度改变读法的会话链路）。
     {
         metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
-        type(session, "jiuzheeyang");
-        require(first_two(session, "就这样", "就"),
-                "jiuzheeyang must lead with 就这样 and keep the uncorrected reading second.");
-        require(session.get_pinyin_segmentation_with_cases() == "jiu'zhee'yang",
-                "The preedit must follow the raw spans of the leading insertion correction.");
-        const auto committed = session.select_candidate(static_cast<std::size_t>(0));
-        require(committed.commit == "就这样" && !session.has_composition(),
-                "Selecting the insertion-corrected sentence must consume every typed letter.");
+        type(session, "zaiozheli");
+        const auto found = find_candidate_index(session, "在这里");
+        require(found < session.candidates().size() && session.candidates()[found].corrected_from == "zaiozheli",
+                "A neighbor-inserted vowel must still reach the corrected phrase end to end.");
+        const auto committed = session.select_candidate(found);
+        require(committed.commit == "在这里" && !session.has_composition(),
+                "Selecting the neighbor-insertion corrected phrase must consume every typed letter.");
     }
 
     // 字面切分是真词（数额）时不认改变字母数的读法：shue 按多一个 u 读成 she 的「社」
@@ -1190,10 +1208,10 @@ void run_legal_input_correction_tests(const std::filesystem::path &data_director
     std::filesystem::remove_all(directory);
 }
 
-// 贵档读法在上下文明显更好时可以领衔：shiideya 的换位读法 shi + ide->die（权重 10，
-// 是爹呀）比多字读法 shii->shi（权重 12，是的呀）便宜一档，按旧规则贵档永远排在最后。
-// fixture 无 sc.lm，启发式打分：是的(ln10000+6) + 呀(ln0.5) - 2.4 = 14.1，
-// 是 + 爹 + 呀 全是单字 = ln0.9 + ln0.01 + ln0.5 - 2.0 = -7.4。
+// 贵档读法在上下文明显更好时可以领衔：sahngna 的换位读法 sahng->shang（权重 10，
+// 上+拿）比邻键插入读法 sahng->sang（权重 12，桑拿）便宜一档，按旧规则贵档永远排在
+// 最后。fixture 无 sc.lm，启发式打分：桑拿(ln10000+6) - 2.4 = 15.2，上+拿全是单字
+// = ln0.9 + ln0.9 - 2.0 = -1.8。（双击/远键插入已随 R1 移除，本用例改用邻键插入。）
 void run_autocorrect_costlier_context_tests(const std::filesystem::path &data_directory)
 {
     const std::filesystem::path directory = data_directory / "autocorrect-costlier-context";
@@ -1201,14 +1219,12 @@ void run_autocorrect_costlier_context_tests(const std::filesystem::path &data_di
     {
         Database database(directory / "msime.db");
         database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_s VALUES('shi', 's', '是', 900000);");
+                         "INSERT INTO tbl_1_s VALUES('shang', 's', '上', 900000);"
+                         "INSERT INTO tbl_1_s VALUES('sang', 's', '桑', 900000);");
         database.execute("CREATE TABLE tbl_2_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_2_s VALUES('shi''de', 'sd', '是的', 10000);");
-        database.execute("CREATE TABLE tbl_1_d(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_d VALUES('die', 'd', '爹', 10000);"
-                         "INSERT INTO tbl_1_d VALUES('de', 'd', '的', 900000);");
-        database.execute("CREATE TABLE tbl_1_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_y VALUES('ya', 'y', '呀', 500000);");
+                         "INSERT INTO tbl_2_s VALUES('sang''na', 'sn', '桑拿', 10000);");
+        database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_n VALUES('na', 'n', '拿', 900000);");
     }
 
     metasequoia::RuntimePaths paths;
@@ -1223,24 +1239,103 @@ void run_autocorrect_costlier_context_tests(const std::filesystem::path &data_di
     {
         metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
         session.set_sentence_association(lattice_only);
-        type(session, "shiideya");
-        require(!session.candidates().empty() && session.candidates().front().word == "是的呀",
-                "A costlier correction the context clearly prefers must lead.");
-        require(find_candidate_index(session, "是爹呀") < session.candidates().size(),
-                "The cheaper correction must stay available.");
-        require(session.get_pinyin_segmentation_with_cases() == "shii'de'ya",
-                "The preedit must follow the leading costlier correction.");
+        type(session, "sahngna");
+        require(!session.candidates().empty() && session.candidates().front().word == "桑拿",
+                "A costlier neighbor-insertion correction the context clearly prefers must lead.");
+        require(session.get_pinyin_segmentation_with_cases() == "sahng'na",
+                "The preedit must follow the promoted costlier correction.");
     }
     // 只开万象来源行、不显示 Trigram 整句（用户实际配置）：上下文消解照样生效。fixture
-    // 没有 .gram，出不了〔万象〕整句行，贵档胜者由它的最长前缀词「是的」领衔。
+    // 没有 .gram，出不了〔万象〕整句行，贵档胜者由它的最长前缀词「桑拿」领衔。
     {
         SentenceAssociationOptions collocation_only;
         collocation_only.collocation_rerank = true;
         metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
         session.set_sentence_association(collocation_only);
-        type(session, "shiideya");
-        require(!session.candidates().empty() && session.candidates().front().word == "是的",
+        type(session, "sahngna");
+        require(!session.candidates().empty() && session.candidates().front().word == "桑拿",
                 "The context rerank must run whenever any sentence source is on, not only the Trigram row.");
+    }
+
+    std::filesystem::remove_all(directory);
+}
+
+// 纠错开关关掉后，查询之外的几条路径也必须按字面切分，否则它们和查询落在不同的键上：
+// - 写回：选中后调频要把字面键 hao'yong'a 的行改掉，而不是别名重切出的 hao'yong'ga；
+// - 辅助码：带辅助码的输入自己切底串，不能让 haoyonga 经别名层变成 hao'yong'ga（辅助码只在底串是完整拼音时生效）；
+// - 固定位置：laing 的上下文 key 不能被切成 liang，和真正输入 liang 的那组混到一起。
+void run_autocorrect_off_consistency_tests(const std::filesystem::path &data_directory)
+{
+    const std::filesystem::path directory = data_directory / "autocorrect-off-consistency";
+    std::filesystem::create_directories(directory);
+    write_file(directory / "helpcodes" / "helpcode.txt", "好=ef\n用=gh\n啊=ij\n阿=kl\n");
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_3_h(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_h VALUES('hao''yong''a', 'hya', '好用啊', 100);"
+                         "INSERT INTO tbl_3_h VALUES('hao''yong''a', 'hya', '好用阿', 200);"
+                         "INSERT INTO tbl_3_h VALUES('hao''yong''ga', 'hyg', '好用嘎', 300);");
+
+        database.execute("CREATE TABLE tbl_1_l(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_l VALUES('lai', 'l', '来', 200);"
+                         "INSERT INTO tbl_1_l VALUES('liang', 'l', '两', 200);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0u, true, true, true, paths);
+        type(session, "haoyonga");
+        require(session.select_candidate(candidate_index(session, "好用啊")).commit == "好用啊",
+                "The literal reading of haoyonga must be selectable with autocorrection off.");
+        Database database(directory / "msime.db");
+        require(database.query_integer("SELECT weight FROM tbl_3_h WHERE value='好用啊'") > 100,
+                "Learning a pick with autocorrection off must update the literal key it was queried under.");
+    }
+
+    {
+        metasequoia::InputSession helpcode(SchemeType::Quanpin, 0u, true, true, true, paths);
+        helpcode.set_quanpin_helpcode_enabled(true);
+        require(helpcode.set_helpcode_schema("lantian"), "The helpcode fixture was not selected.");
+        type(helpcode, "haoyongaK");
+        require(find_candidate_index(helpcode, "好用啊") < helpcode.candidates().size(),
+                "With autocorrection off a helpcode must still offer the literal reading hao'yong'a.");
+        require(find_candidate_index(helpcode, "好用嘎") == helpcode.candidates().size(),
+                "With autocorrection off a helpcode must not query the alias re-cut hao'yong'ga.");
+    }
+
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0u, true, true, true, paths);
+        session.enable_fixed_positions();
+        type(session, "laing");
+        const auto index = candidate_index(session, "来");
+        const auto selected = session.candidates()[index];
+        require(session.set_candidate_position(index, 2).handled, "Pinning a literal candidate must succeed.");
+        const auto key = selected.canonical_pinyin.empty() ? selected.pinyin : selected.canonical_pinyin;
+        const auto journal = metasequoia::path_to_utf8(paths.user(metasequoia::assets::user_journal));
+        require(!user_dictionary::is_fixed(journal, "liang", key, selected.word),
+                "With autocorrection off, laing must not pin into the liang context.");
+        const auto literal = quanpin::cut_pinyin_by_mode("laing", "correction", false);
+        require(!literal.empty() &&
+                    user_dictionary::is_fixed(journal, quanpin::join_segments(literal.front()), key, selected.word),
+                "With autocorrection off, laing must pin under its literal context.");
+    }
+
+    // 方案与词典按同一条规则读掩码：只带删除 / 插入位的掩码在词典侧按「关」处理，方案也不能
+    // 跑别名层，否则预编辑显示纠正、候选却按未纠正查。
+    {
+        QuanpinScheme scheme;
+        scheme.set_raw_input("sahng", "sahng");
+        scheme.set_autocorrect_types(quanpin::kAutocorrectDeletion | quanpin::kAutocorrectInsertion);
+        require(scheme.build_request().segmentation != "shang",
+                "A mask without the user-facing bits must not run the alias layer in the scheme.");
+        scheme.set_autocorrect_types(quanpin::kAutocorrectTransposition);
+        require(scheme.build_request().segmentation == "shang",
+                "The transposition switch must run the alias layer in the scheme.");
     }
 
     std::filesystem::remove_all(directory);
@@ -1436,9 +1531,12 @@ void run_autocorrect_selection_consumption_tests(const std::filesystem::path &da
 }
 
 // 阶段 2 生成式纠错空间（任务 quanpin-autocorrect-generated-space）：静态表
-// 形状之外的单编辑手误由生成式索引兜底，权重落贵档（15）。隔离 fixture：
+// 形状之外的单编辑手误由生成式索引兜底，权重落贵档（15）。本任务把生成式的
+// 「任意字母插入」分片移除（远键插入不再是纠错形状），只保留远键替换。
+// 隔离 fixture：
 // - shatg = shang 的 n→t（t 非邻键，远键替换）
-// - zthou = zhou 的 z/h 之间插 t（t 不在静态覆盖集，远键插入）
+// - schang：远键插入（c 既非 s 的邻键也非 h 的邻键），本任务后不得再纠错
+//   （移除断言；不用 shxang——它同时是 shuang 的远键替换，会留下替换读法）
 // - chng 同键双读：chng→chang（静态漏字 11）与 chng→cang（生成 15），
 //   静态最优时生成切分整体丢弃——静态优先语义的判别性断言
 // - shatngzh = head shatng + 简拼尾 zh：head 组合路径同享静态优先
@@ -1450,8 +1548,6 @@ void run_autocorrect_generated_space_tests(const std::filesystem::path &data_dir
         Database database(directory / "msime.db");
         database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_s VALUES('shang', 's', '上', 900);");
-        database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_z VALUES('zhou', 'z', '周', 900);");
         database.execute("CREATE TABLE tbl_1_c(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_c VALUES('chang', 'c', '长', 900);"
                          "INSERT INTO tbl_1_c VALUES('cang', 'c', '仓', 5000);");
@@ -1477,16 +1573,16 @@ void run_autocorrect_generated_space_tests(const std::filesystem::path &data_dir
                 "A far-substitution typo must be corrected to 上 with the typed letters recorded.");
     }
 
-    // 远键插入（词中位）：zthou → zhou（t 不在 z/h 的覆盖集）。fixture 特意
-    // 选无竞争切分的输入：zhwou 这类插入位会拼出 [zha(w 邻键替换)+ou] 等更
-    // 便宜的合法切分（权重 13 < 15），生成读法按契约排后被前缀候选遮蔽——
-    // 那是排序语义，不是生成类失效。zthou 无任何竞争切分，唯一读即纠错读法。
+    // 远键插入（③）已随本任务移除：schang（c 既非 s 的邻键也非 h 的邻键，且不是
+    // 任何合法音节的远键替换）必须不再有纠错读法。
     {
         metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
-        type(session, "zthou");
-        const auto found = find_candidate_index(session, "周");
-        require(found < session.candidates().size() && session.candidates()[found].corrected_from == "zthou",
-                "A far-insertion typo must be corrected to 周 with the typed letters recorded.");
+        type(session, "schang");
+        require(quanpin::autocorrect_cut("schang", both).empty(),
+                "Far-key insertions were removed: schang must have no correction cut.");
+        require(std::none_of(session.candidates().begin(), session.candidates().end(),
+                             [](const WordItem &item) { return !item.corrected_from.empty(); }),
+                "Far-key insertions were removed: schang must produce no corrected candidate.");
     }
 
     // 静态优先语义：chng = chang 漏 a。读法竞争——chng→chang（静态漏字 11）与
@@ -1502,10 +1598,9 @@ void run_autocorrect_generated_space_tests(const std::filesystem::path &data_dir
     }
 
     // head+简拼尾组合路径的静态优先：shatngzh 在整串 k-best 上无解（尾部 zh 非
-    // 完整音节），走 head 重试。head shatng 的读法竞争——sha+tng→tang（静态漏字
-    // 11）与 shatng→shang（生成插入 15）。丢弃规则由 k-best 搜索自身执行，head
-    // 路径同享：静态读法的沙汤扎（sha'tang'zh 精确键）在场，上周（shang+zh 生成
-    // 读法经 costlier 档，表内输入的基线里不存在）不得出现。
+    // 完整音节），走 head 重试。head shatng 的读法是 sha+tng→tang（静态漏字 11）。
+    // 生成式插入已随本任务移除，shang 读法（旧生成插入 15）不再存在。静态读法的
+    // 沙汤扎（sha'tang'zh 精确键）在场，上周（shang+zh）不得出现。
     {
         metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
         type(session, "shatngzh");
@@ -2085,6 +2180,11 @@ int run_test()
                     "A v-form umlaut syllable did not query its canonical dictionary key.");
         }
 
+        // The alias layer that folds a dropped final g (zhonguo -> zhong'guo,
+        // dongua -> dong'gua) is part of autocorrection and now follows its
+        // switch, so these cases run with the switch explicitly on. The default
+        // session has it off -- the mask=0 block right below pins that.
+        const unsigned alias_mask = quanpin::kAutocorrectTransposition;
         const std::array<UmlautAliasCase, 6> missing_final_g_cases = {{{"zhonguo", "中国"},
                                                                        {"zhon'guo", "中国"},
                                                                        {"zhongguo", "中国"},
@@ -2093,12 +2193,36 @@ int run_test()
                                                                        {"dongan", "东安"}}};
         for (const auto &test_case : missing_final_g_cases)
         {
-            metasequoia::InputSession corrected;
+            metasequoia::InputSession corrected(SchemeType::Quanpin, alias_mask);
             type(corrected, test_case.pinyin);
             require(candidate_index(corrected, test_case.candidate) == 0,
                     "A missing final g did not resolve to the complete dictionary phrase.");
             require(corrected.select_candidate(0).commit == test_case.candidate && !corrected.has_composition(),
                     "Selecting a corrected phrase left an unconsumed input suffix.");
+        }
+
+        // R2: with both switches off the engine must not correct at all. These
+        // inputs used to be rewritten by the always-on alias layer (sahng ->
+        // shang, zhonguo -> zhong'guo, laing -> liang, ahng -> hang, mihng ->
+        // ming); now the alias layer and the correction BFS both follow the
+        // mask, so nothing may come back marked as corrected.
+        for (const char *typo : {"sahng", "zhonguo", "laing", "ahng", "mihng"})
+        {
+            metasequoia::InputSession off_session(SchemeType::Quanpin, 0u);
+            type(off_session, typo);
+            require(std::none_of(off_session.candidates().begin(), off_session.candidates().end(),
+                                 [](const WordItem &item) { return !item.corrected_from.empty(); }),
+                    "With autocorrection off no candidate may be marked as corrected.");
+        }
+
+        // R2 exception: the non-typo ü normalization must still work with the
+        // switches off. The run_test fixture carries ju/qu/xu/yu (nue/lve live in
+        // run_umlaut_alias_session_tests, which also pins the mask=0 path).
+        {
+            metasequoia::InputSession umlaut_session(SchemeType::Quanpin, 0u);
+            type(umlaut_session, "jv");
+            require(candidate_index(umlaut_session, "居") == 0,
+                    "The ü normalization (jv -> ju) must stay active with autocorrection off.");
         }
 
         // PRD R5 regression: a fully legal spelling whose alias reading won the
@@ -2122,17 +2246,22 @@ int run_test()
                     "A legal spelling with an alias reading must preedit the typed letters.");
         }
 
-        // Inputs the guard does not cover fall back to the input as typed when
-        // the alias layer rewrote the letters: no phantom letter, and a manual
-        // delimiter the user typed stays in place.
-        const std::array<PreeditCase, 4> typed_fallback_preedit_cases = {
-            {{"dongua", "dongua"}, {"zhonguo", "zhonguo"}, {"haoyonga'", "haoyonga'"}, {"hao'yonga", "hao'yonga"}}};
+        // Inputs the guard does not cover: with autocorrection off the alias
+        // layer no longer rewrites the letters, so these preedit their literal
+        // (greedy) cut -- the typed letters with a separator at the greedy cut
+        // position, and never a phantom letter. (With correction on the same
+        // inputs fall back to the typed spelling; that path is covered by the
+        // mask-enabled display cases in test_pinyin.cpp.)
+        const std::array<PreeditCase, 4> typed_fallback_preedit_cases = {{{"dongua", "don'gua"},
+                                                                          {"zhonguo", "zhon'guo"},
+                                                                          {"haoyonga'", "hao'yong'a'"},
+                                                                          {"hao'yonga", "hao'yong'a"}}};
         for (const auto &test_case : typed_fallback_preedit_cases)
         {
             metasequoia::InputSession session;
             type(session, test_case.pinyin);
             require(session.get_pinyin_segmentation_with_cases() == test_case.expected_preedit,
-                    "An alias-rewritten input must preedit exactly what was typed.");
+                    "An uncorrected input must preedit its literal cut.");
         }
 
         metasequoia::InputSession no_autocorrect_session(SchemeType::Quanpin, 0u);
@@ -2608,6 +2737,7 @@ int run_test()
     run_autocorrect_selection_consumption_tests(data_directory);
     run_literal_segmentation_arbitration_tests(data_directory);
     run_autocorrect_costlier_context_tests(data_directory);
+    run_autocorrect_off_consistency_tests(data_directory);
 
     run_autocorrect_generated_space_tests(data_directory);
     run_autocorrect_pure_jianpin_guard_tests(data_directory);

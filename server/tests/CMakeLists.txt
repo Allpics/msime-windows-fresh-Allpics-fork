@@ -8,6 +8,7 @@ add_test(NAME voice_control_dispatch COMMAND test_voice_control_dispatch)
 
 set(TEST_SOURCE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark_model_path.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_date_time_query.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_v_mode_query.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_emoji_query.cpp"

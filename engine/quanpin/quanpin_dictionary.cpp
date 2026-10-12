@@ -910,31 +910,31 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
             neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralDesktop});
         }
-        // 万象语法模型重排：与其他来源各自独立地从静态 n-best 出发行（Collocation）。
-        if (sentence_association_.collocation_rerank && collocation_db_ != nullptr && collocation_db_->valid())
-        {
-            neural_rerankers.push_back(
-                {quanpin::make_octagram_reranker(collocation_db_, sentence_association_.collocation_rerank_weight),
-                 CandidateSource::Collocation});
-        }
+        // 万象语法模型不再单独重排：加成分只在词格解码期注入一次，〔万象〕行即解码最优路径
+        // （见 WordLatticeOptions::include_collocation_best）。
         quanpin::WordLatticeOptions lattice_options;
+        const bool has_collocation =
+            collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0;
         // 神经模型和去重补位都需要完整候选池；否则只解最优的一条。
         const bool needs_alternatives = !neural_rerankers.empty() || (sentence_association_.word_lattice &&
                                                                       sentence_association_.show_next_on_duplicate);
         lattice_options.nbest = needs_alternatives ? static_cast<int>(neural::RerankOptions{}.max_paths) : 1;
         lattice_options.include_lattice_best = sentence_association_.word_lattice;
+        lattice_options.include_collocation_best = sentence_association_.collocation_rerank && has_collocation;
         lattice_options.show_next_on_duplicate = sentence_association_.show_next_on_duplicate;
         lattice_options.language_model = language_model_;
-        // 万象语法模型的加性搭配项：逐边叠加字级搭配分，与三元模型在同一 Viterbi 里竞争。
-        if (collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0)
+        // 万象语法模型的搭配项：逐边叠加字级搭配分，与三元模型在同一 Viterbi 里竞争。
+        // query() 是自然对数域，乘 kLnToLog10 换到词格的 log10 域；六参数来自配置。
+        if (has_collocation)
         {
-            lattice_options.collocation_scorer = [db = collocation_db_](std::string_view tail, std::string_view word,
-                                                                        bool is_rear) {
-                return db->query(std::string(tail), std::string(word), is_rear, gram::GrammarConfig{});
+            lattice_options.collocation_scorer = [db = collocation_db_,
+                                                  config = sentence_association_.collocation_grammar](
+                                                     std::string_view tail, std::string_view word, bool is_rear) {
+                return db->query(std::string(tail), std::string(word), is_rear, config) * quanpin::kLnToLog10;
             };
             lattice_options.collocation_weight = sentence_association_.collocation_weight;
         }
-        if (sentence_association_.word_lattice || !neural_rerankers.empty())
+        if (sentence_association_.word_lattice || !neural_rerankers.empty() || lattice_options.include_collocation_best)
         {
             quanpin::merge_lattice_candidates(result, segments, lattice_lookup(lattice_options.span_limit),
                                               segmentation.empty() ? raw_input : segmentation, lattice_options,
@@ -1465,17 +1465,10 @@ std::optional<quanpin::LatticePath> QuanpinDictionary::lattice_best_path(const q
     {
         return *cached;
     }
-    // 与 query_series 的装配保持一致：collocation 项同样参与路径分。
+    // 仲裁回到只用 kenlm：切分/纠错裁决不再让 octagram 参与。搭配项是当前同音/切分被带偏的
+    // 放大器之一，而 librime 的切分器也不由 grammar 驱动（见 design D1）。
     quanpin::WordLatticeOptions lattice_options;
     lattice_options.language_model = language_model_;
-    if (collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0)
-    {
-        lattice_options.collocation_scorer = [db = collocation_db_](std::string_view tail, std::string_view word,
-                                                                    bool is_rear) {
-            return db->query(std::string(tail), std::string(word), is_rear, gram::GrammarConfig{});
-        };
-        lattice_options.collocation_weight = sentence_association_.collocation_weight;
-    }
     // 不带模糊音：这个分用来裁决切分与纠错，模糊读音只给敲定的切分多出整句，不参与投票。
     // 带上它，字面读法会借模糊读音的分压过纠错（jiuzheeyang 的「就这恶言」压过「就这样」）。
     const auto lookup = lattice_lookup(lattice_options.span_limit, false);

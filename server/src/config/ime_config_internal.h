@@ -190,7 +190,13 @@ extern bool g_assoc_sentence_source_badge;
 extern bool g_assoc_sentence_collocation_enabled;
 extern std::string g_assoc_sentence_collocation_model;
 extern double g_assoc_sentence_collocation_weight;
-extern double g_assoc_sentence_collocation_rerank_weight;
+// octagram 六参数（万象现行默认）。不进设置页，供配置文件高级调参。
+extern int g_assoc_sentence_collocation_max_length;
+extern int g_assoc_sentence_collocation_min_length;
+extern double g_assoc_sentence_collocation_penalty;
+extern double g_assoc_sentence_collocation_non_penalty;
+extern double g_assoc_sentence_collocation_weak_penalty;
+extern double g_assoc_sentence_collocation_rear_penalty;
 extern bool g_emoji_mixed_input_enabled;
 extern bool g_kaomoji_mixed_input_enabled;
 extern bool g_unicode_mode_enabled;

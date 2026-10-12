@@ -242,25 +242,23 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
             neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralDesktop});
         }
-        // 万象语法模型重排，与全拼同构，见 QuanpinDictionary::query_series。
-        if (sentence_association_.collocation_rerank && collocation_db_ != nullptr && collocation_db_->valid())
-        {
-            neural_rerankers.push_back(
-                {quanpin::make_octagram_reranker(collocation_db_, sentence_association_.collocation_rerank_weight),
-                 CandidateSource::Collocation});
-        }
+        // 万象语法模型不再单独重排，与全拼同构，见 QuanpinDictionary::query_series。
         quanpin::WordLatticeOptions lattice_options;
+        const bool has_collocation =
+            collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0;
         const bool needs_alternatives = !neural_rerankers.empty() || (sentence_association_.word_lattice &&
                                                                       sentence_association_.show_next_on_duplicate);
         lattice_options.nbest = needs_alternatives ? static_cast<int>(neural::RerankOptions{}.max_paths) : 1;
         lattice_options.include_lattice_best = sentence_association_.word_lattice;
+        lattice_options.include_collocation_best = sentence_association_.collocation_rerank && has_collocation;
         lattice_options.show_next_on_duplicate = sentence_association_.show_next_on_duplicate;
         lattice_options.language_model = language_model_;
-        if (collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0)
+        if (has_collocation)
         {
-            lattice_options.collocation_scorer = [db = collocation_db_](std::string_view tail, std::string_view word,
-                                                                        bool is_rear) {
-                return db->query(std::string(tail), std::string(word), is_rear, gram::GrammarConfig{});
+            lattice_options.collocation_scorer = [db = collocation_db_,
+                                                  config = sentence_association_.collocation_grammar](
+                                                     std::string_view tail, std::string_view word, bool is_rear) {
+                return db->query(std::string(tail), std::string(word), is_rear, config) * quanpin::kLnToLog10;
             };
             lattice_options.collocation_weight = sentence_association_.collocation_weight;
         }
@@ -283,7 +281,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
             constexpr int kConstrainedSpanLimit = 4096;
             lattice_options.constrained_lookup = lattice_lookup(kConstrainedSpanLimit);
         }
-        if (sentence_association_.word_lattice || !neural_rerankers.empty())
+        if (sentence_association_.word_lattice || !neural_rerankers.empty() || lattice_options.include_collocation_best)
         {
             quanpin::merge_lattice_candidates(candidate_list, quanpin_syllables,
                                               lattice_lookup(lattice_options.span_limit), pinyin_sequence,
@@ -1246,9 +1244,9 @@ bool ShuangpinDictionary::resolve_direct_helpcode(QueryRequest &request)
     context.options.language_model = language_model_;
     if (collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0)
     {
-        context.options.collocation_scorer = [db = collocation_db_](std::string_view tail, std::string_view word,
-                                                                    bool is_rear) {
-            return db->query(std::string(tail), std::string(word), is_rear, gram::GrammarConfig{});
+        context.options.collocation_scorer = [db = collocation_db_, config = sentence_association_.collocation_grammar](
+                                                 std::string_view tail, std::string_view word, bool is_rear) {
+            return db->query(std::string(tail), std::string(word), is_rear, config) * quanpin::kLnToLog10;
         };
         context.options.collocation_weight = sentence_association_.collocation_weight;
     }

@@ -226,11 +226,6 @@ bool SetConfiguredAssocSentenceCollocationEnabled(bool enabled)
     return true;
 }
 
-bool GetConfiguredAssocSentenceCollocationRerankWeight()
-{
-    return g_assoc_sentence_collocation_rerank_weight;
-}
-
 std::string GetConfiguredAssocSentenceCollocationModel()
 {
     return g_assoc_sentence_collocation_model;
@@ -252,6 +247,36 @@ bool SetConfiguredAssocSentenceCollocationModel(const std::string &model_id)
 double GetConfiguredAssocSentenceCollocationWeight()
 {
     return g_assoc_sentence_collocation_weight;
+}
+
+int GetConfiguredAssocSentenceCollocationMaxLength()
+{
+    return g_assoc_sentence_collocation_max_length;
+}
+
+int GetConfiguredAssocSentenceCollocationMinLength()
+{
+    return g_assoc_sentence_collocation_min_length;
+}
+
+double GetConfiguredAssocSentenceCollocationPenalty()
+{
+    return g_assoc_sentence_collocation_penalty;
+}
+
+double GetConfiguredAssocSentenceCollocationNonPenalty()
+{
+    return g_assoc_sentence_collocation_non_penalty;
+}
+
+double GetConfiguredAssocSentenceCollocationWeakPenalty()
+{
+    return g_assoc_sentence_collocation_weak_penalty;
+}
+
+double GetConfiguredAssocSentenceCollocationRearPenalty()
+{
+    return g_assoc_sentence_collocation_rear_penalty;
 }
 
 bool GetConfiguredAssocSentenceShowNextOnDuplicate()

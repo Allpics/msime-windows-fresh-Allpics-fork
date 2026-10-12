@@ -18,7 +18,8 @@ vi.mock('./credential-test', () => ({ setupCredentialTest: vi.fn() }));
 
 import { updateConfig } from './config-sync';
 import { setSmartPunctuationOptionsDisabled } from './shared';
-import { setupInput } from './input';
+import { applyTranslationConfig, setupInput } from './input';
+import { isUsableAiAssistantState, setAiAssistantState } from './ai-assistant-state';
 
 class StubElement extends EventTarget {
   classes = new Set<string>();
@@ -36,18 +37,21 @@ class StubElement extends EventTarget {
 
 let expand: StubElement;
 let details: StubElement;
+let aiSummary: { value: string };
 
 beforeEach(() => {
   toggles.clear();
   vi.clearAllMocks();
   expand = new StubElement();
   details = new StubElement();
+  aiSummary = { value: '' };
   vi.stubGlobal('document', {
     querySelectorAll: () => [],
     querySelector: () => null,
     getElementById: (id: string) => {
       if (id === 'smartPunctuationExpand') return expand;
       if (id === 'smartPunctuationDetails') return details;
+      if (id === 'aiTranslationSummary') return aiSummary;
       return null;
     },
     addEventListener: vi.fn()
@@ -86,4 +90,28 @@ it('toggles the details container from the section header', () => {
   expand.dispatchEvent(new Event('click'));
   expect(expand.getAttribute('aria-expanded')).toBe('false');
   expect(details.classes.has('open')).toBe(false);
+});
+
+it('shows the AI assistant provider when candidate translation reuses it', () => {
+  setAiAssistantState({
+    provider: 'deepseek', endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-v4-flash', token: 'sk-test'
+  });
+  applyTranslationConfig({ provider: 'ai' });
+  expect(aiSummary.value).toBe('deepseek · deepseek-v4-flash');
+});
+
+it('follows AI assistant edits made after the snapshot', () => {
+  setupInput();
+  setAiAssistantState({ provider: 'deepseek', endpoint: 'https://api.deepseek.com/chat/completions', model: 'm', token: '' });
+  applyTranslationConfig({ provider: 'ai' });
+  expect(aiSummary.value).toBe('');
+  setAiAssistantState({ provider: 'deepseek', endpoint: 'https://api.deepseek.com/chat/completions', model: 'm', token: 'sk-real' });
+  expect(aiSummary.value).toBe('deepseek · m');
+});
+
+it('treats template placeholder tokens as not configured', () => {
+  for (const token of ['FAKESECRET_e1f2g3h4', '<YOUR_AI_TOKEN_DEEPSEEK>']) {
+    expect(isUsableAiAssistantState({ provider: 'deepseek', endpoint: 'https://x/chat', model: 'm', token })).toBe(false);
+  }
+  expect(isUsableAiAssistantState({ provider: 'custom', endpoint: 'ftp://x', model: 'm', token: 'sk' })).toBe(false);
 });

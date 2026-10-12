@@ -1699,10 +1699,11 @@ void test_quanpin_autocorrect_display()
 }
 
 // 万象语法模型的会话链路冒烟：经 QuanpinDictionary::set_sentence_association 下发
-// 模型路径，验证加性搭配项能改写整句首选——bu'zhe'ji 在三元模型下出「不这几」，
+// 模型路径，验证解码期的搭配项能改写整句首选——bu'zhe'ji 在三元模型下出「不这几」，
 // 加上搭配后词格首选应为「不着急」（离线评测的典型翻盘案例）。模型路径由
 // METASEQUOIA_IME_TEST_COLLOCATION_MODEL 环境变量给出，未设置或载入失败时优雅跳过：
 // .gram 是按需下载的可选资产，测试数据目录默认没有。
+// 权重用出厂默认 1.0（scorer 内已把 .gram 的自然对数换算到 log10 域）。
 void test_quanpin_collocation_session()
 {
     fmt::println("==== Quanpin Collocation Session ====");
@@ -1717,7 +1718,7 @@ void test_quanpin_collocation_session()
     SentenceAssociationOptions association;
     association.word_lattice = true;
     association.collocation_model = model_path;
-    association.collocation_weight = 0.25;
+    association.collocation_weight = 1.0;
     dictionary.set_sentence_association(association);
 
     const auto result = dictionary.query("buzheji");

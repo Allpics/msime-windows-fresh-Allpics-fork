@@ -138,11 +138,16 @@ bool g_assoc_sentence_neural_desktop = false;
 bool g_assoc_sentence_neural_keyboard = true;
 bool g_assoc_sentence_show_next_on_duplicate = false;
 // octagram 语法模型（八股文 .gram）：总开关默认关；模型 id 默认空（空 = 未选择任何模型）。
-// 权重不进设置页，供配置文件高级调参。
+// 奖励权重与六参数不进设置页，供配置文件高级调参；默认对齐万象现行（wanxiang.schema.yaml）。
 bool g_assoc_sentence_collocation_enabled = false;
 std::string g_assoc_sentence_collocation_model;
-double g_assoc_sentence_collocation_weight = 0.1;
-double g_assoc_sentence_collocation_rerank_weight = 0.05;
+double g_assoc_sentence_collocation_weight = 1.0;
+int g_assoc_sentence_collocation_max_length = 6;
+int g_assoc_sentence_collocation_min_length = 2;
+double g_assoc_sentence_collocation_penalty = -14.0;
+double g_assoc_sentence_collocation_non_penalty = -6.0;
+double g_assoc_sentence_collocation_weak_penalty = -100.0;
+double g_assoc_sentence_collocation_rear_penalty = -18.0;
 // 候选窗整句候选后的来源标签（〔Trigram〕〔神经K〕等），默认不显示。
 bool g_assoc_sentence_source_badge = false;
 bool g_emoji_mixed_input_enabled = false;
@@ -567,9 +572,16 @@ bool LoadImeConfig()
         g_assoc_sentence_show_next_on_duplicate = tbl["association"]["sentence_show_next_on_duplicate"].value_or(false);
         g_assoc_sentence_collocation_enabled = tbl["association"]["sentence_collocation_enabled"].value_or(false);
         g_assoc_sentence_collocation_model = tbl["association"]["sentence_collocation_model"].value_or(std::string());
-        g_assoc_sentence_collocation_weight = tbl["association"]["sentence_collocation_weight"].value_or(0.1);
-        g_assoc_sentence_collocation_rerank_weight =
-            tbl["association"]["sentence_collocation_rerank_weight"].value_or(0.05);
+        g_assoc_sentence_collocation_weight = tbl["association"]["sentence_collocation_weight"].value_or(1.0);
+        g_assoc_sentence_collocation_max_length = tbl["association"]["sentence_collocation_max_length"].value_or(6);
+        g_assoc_sentence_collocation_min_length = tbl["association"]["sentence_collocation_min_length"].value_or(2);
+        g_assoc_sentence_collocation_penalty = tbl["association"]["sentence_collocation_penalty"].value_or(-14.0);
+        g_assoc_sentence_collocation_non_penalty =
+            tbl["association"]["sentence_collocation_non_penalty"].value_or(-6.0);
+        g_assoc_sentence_collocation_weak_penalty =
+            tbl["association"]["sentence_collocation_weak_penalty"].value_or(-100.0);
+        g_assoc_sentence_collocation_rear_penalty =
+            tbl["association"]["sentence_collocation_rear_penalty"].value_or(-18.0);
         g_assoc_sentence_source_badge = tbl["association"]["sentence_source_badge"].value_or(false);
         g_emoji_mixed_input_enabled = tbl["general"]["emoji_mixed_input"].value_or(false);
         g_kaomoji_mixed_input_enabled = tbl["general"]["kaomoji_mixed_input"].value_or(false);

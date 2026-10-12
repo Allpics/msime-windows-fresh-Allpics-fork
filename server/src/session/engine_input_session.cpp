@@ -99,7 +99,13 @@ void EngineInputSession::ApplyConfiguration()
         collocation_enabled ? ResolveCollocationModelPath(GetConfiguredAssocSentenceCollocationModel()) : std::string();
     association.collocation_weight = GetConfiguredAssocSentenceCollocationWeight();
     association.collocation_rerank = collocation_enabled && !association.collocation_model.empty();
-    association.collocation_rerank_weight = GetConfiguredAssocSentenceCollocationRerankWeight();
+    // octagram 六参数（万象现行默认），随配置下发；这些键不进设置页，只由配置文件调。
+    association.collocation_grammar.collocation_max_length = GetConfiguredAssocSentenceCollocationMaxLength();
+    association.collocation_grammar.collocation_min_length = GetConfiguredAssocSentenceCollocationMinLength();
+    association.collocation_grammar.collocation_penalty = GetConfiguredAssocSentenceCollocationPenalty();
+    association.collocation_grammar.non_collocation_penalty = GetConfiguredAssocSentenceCollocationNonPenalty();
+    association.collocation_grammar.weak_collocation_penalty = GetConfiguredAssocSentenceCollocationWeakPenalty();
+    association.collocation_grammar.rear_penalty = GetConfiguredAssocSentenceCollocationRearPenalty();
     session_.set_sentence_association(association);
     session_.set_shuangpin_preedit_uses_raw(GetConfiguredShuangpinPreeditMode() == "shuangpin");
     // 五笔拼音混输与 z 键角色是两个独立设置：混输是「同时给五笔和拼音候选」，z 键角色只管

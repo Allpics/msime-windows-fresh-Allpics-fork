@@ -321,6 +321,12 @@ unsigned literal_mixed_match(const WordItem &item, const std::string &raw_input)
                : 0;
 }
 
+bool literal_jianpin_match(const WordItem &item, const std::string &raw_input)
+{
+    return (item.source == CandidateSource::Database || item.source == CandidateSource::UserDatabase) &&
+           quanpin::literal_jianpin_pinyin_match(raw_input, item.pinyin, item.canonical_pinyin);
+}
+
 // 读音就是 key 这条切分的行（整键块）。整句行按敲的读音（pinyin）认：词格整句的
 // canonical_pinyin 是它实际走的读音，开着模糊音时可能与切分不同（min 走成 ming）。
 bool reads_full_key(const WordItem &item, const std::string &key)
@@ -515,9 +521,12 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
         const std::string fallback_segmentation =
             segmentation.empty() ? quanpin::join_segments(segments) : segmentation;
         const auto literal = query_series(raw_input, fallback_segmentation, segments);
+        // 纯简拼字面整词与混合简拼同样领衔：全辅音串照常进纠错（形状分不出 nbn 与漏了元音
+        // 的 bng），但词库里真有这个简拼读法时（nbn「能不能」、bqng「并且能够」），纠错读法
+        // 只排在它后面，仍可选、仍带纠错标记。
         for (const auto &item : literal)
         {
-            if (literal_mixed_match(item, raw_input))
+            if (literal_mixed_match(item, raw_input) || literal_jianpin_match(item, raw_input))
                 literal_mixed.push_back(item);
         }
         append_unique_words(result, literal);

@@ -919,12 +919,21 @@ std::filesystem::path create_autocorrect_probe_database()
         throw std::runtime_error("Failed to create the autocorrect probe database.");
     }
     const char *sql = "CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                      "CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                      "CREATE TABLE tbl_1_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                       "CREATE TABLE tbl_2_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                       "CREATE TABLE tbl_2_j(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                      "CREATE TABLE tbl_3_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                       "CREATE TABLE tbl_4_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                      "CREATE TABLE tbl_4_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                       "INSERT INTO tbl_1_s VALUES('shang','s','上',100);"
+                      "INSERT INTO tbl_1_n VALUES('nan','n','难',100);"
+                      "INSERT INTO tbl_1_b VALUES('bang','b','帮',100);"
                       "INSERT INTO tbl_2_s VALUES('shang''zhi','sz','上至',100);"
                       "INSERT INTO tbl_2_j VALUES('jian''du','jd','监督',100);"
+                      "INSERT INTO tbl_3_n VALUES('neng''bu''neng','nbn','能不能',5000);"
+                      "INSERT INTO tbl_3_n VALUES('nv''qing''nian','nqn','女青年',3000);"
+                      "INSERT INTO tbl_4_b VALUES('bing''qie''neng''gou','bqng','并且能够',4000);"
                       "INSERT INTO tbl_4_s VALUES('sa''huang''na''ge','shng','撒谎那个',1000);";
     const int result = sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
     sqlite3_close(db);
@@ -1122,6 +1131,26 @@ void test_quanpin_autocorrect_switches_and_guard()
     const auto is_shang = [](const WordItem &item) { return item.word == "上"; };
     {
         QuanpinDictionary dictionary(db_path.string());
+
+        // 纯简拼字面整词领衔：纯简拼形输入（每个字母都是一个声母）且词库里有这个简拼整词时，
+        // 它排在纠错读法前面且无 corrected_from；纠错读法仍留在后面、带纠错标记。
+        // 放在既有断言之前：本函数后段有一条与本任务无关的既有失败会抛出，其后的断言不再执行。
+        const unsigned all_four =
+            transposition_only | neighbor_only | quanpin::kAutocorrectDeletion | quanpin::kAutocorrectInsertion;
+        const auto pure_nbn = dictionary.query("nbn", "", all_four);
+        expect(!pure_nbn.empty() && pure_nbn.front().word == "能不能" && pure_nbn.front().corrected_from.empty(),
+               "A pure-jianpin input with a dictionary reading must lead uncorrected (nbn -> 能不能).");
+        expect(std::any_of(pure_nbn.begin(), pure_nbn.end(),
+                           [](const WordItem &item) { return item.word == "难" && item.corrected_from == "nbn"; }),
+               "The corrected reading must stay behind the jianpin word (nbn -> 难).");
+        const auto pure_bqng = dictionary.query("bqng", "", all_four);
+        expect(!pure_bqng.empty() && pure_bqng.front().word == "并且能够" && pure_bqng.front().corrected_from.empty(),
+               "A pure-jianpin input with a dictionary reading must lead uncorrected (bqng -> 并且能够).");
+        // 非纯简拼（shng = sh + n + g，含双字母切分）不受保护：漏字纠错照旧命中「上」。
+        const auto non_pure_shng = dictionary.query("shng", "sh'n'g", all_four);
+        expect(!non_pure_shng.empty() && non_pure_shng.front().word == "上" &&
+                   non_pure_shng.front().corrected_from == "shng",
+               "A non-pure-jianpin typo must still be corrected (shng -> 上).");
 
         const auto corrected = dictionary.query("sahng", "sa'h'n'g", both);
         expect(!corrected.empty() && corrected.front().word == "上",

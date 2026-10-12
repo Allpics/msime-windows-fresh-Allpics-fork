@@ -1525,6 +1525,95 @@ void run_autocorrect_generated_space_tests(const std::filesystem::path &data_dir
     }
 }
 
+// 纯简拼形输入（每个字母都是一个声母）如果词库里真有它的简拼整词，由字面整词领衔：
+// nbn/nqn/bqng 分别命中词库 jp 列的 能不能/女青年/并且能够，纠错读法（难/帮）只排在
+// 后面，仍可选、仍带纠错标记。预编辑按字面简拼切分，选前缀单字只消耗它自己的字母。
+// 漏了元音的 bng 即使有简拼整词「不能够」，「帮」也不能丢。shng 含双字母切分 sh，
+// 不是纯简拼，漏字纠错照旧。
+void run_autocorrect_pure_jianpin_guard_tests(const std::filesystem::path &data_directory)
+{
+    const std::filesystem::path directory = data_directory / "autocorrect-pure-jianpin";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_s VALUES('shang','s','上',900);"
+                         "CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_n VALUES('nan','n','难',900);"
+                         "INSERT INTO tbl_1_n VALUES('neng','n','能',800);"
+                         "CREATE TABLE tbl_1_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_b VALUES('bang','b','帮',900);"
+                         "CREATE TABLE tbl_3_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_b VALUES('bu''neng''gou','bng','不能够',2000);"
+                         "CREATE TABLE tbl_3_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_n VALUES('neng''bu''neng','nbn','能不能',5000);"
+                         "INSERT INTO tbl_3_n VALUES('nv''qing''nian','nqn','女青年',3000);"
+                         "CREATE TABLE tbl_4_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_4_b VALUES('bing''qie''neng''gou','bqng','并且能够',4000);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    const unsigned all = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor |
+                         quanpin::kAutocorrectDeletion | quanpin::kAutocorrectInsertion;
+
+    struct Case
+    {
+        const char *input;
+        const char *word;
+        const char *display;
+        const char *corrected;
+    };
+    for (const Case &test : {Case{"nbn", "能不能", "n'b'n", "难"}, Case{"nqn", "女青年", "n'q'n", "难"},
+                             Case{"bqng", "并且能够", "b'q'n'g", "帮"}, Case{"bng", "不能够", "b'n'g", "帮"}})
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, all, true, true, true, paths);
+        type(session, test.input);
+        require(!session.candidates().empty() && session.candidates().front().word == test.word &&
+                    session.candidates().front().corrected_from.empty(),
+                (std::string("A pure-jianpin whole word must lead, uncorrected: ") + test.input).c_str());
+        const auto corrected = find_candidate_index(session, test.corrected);
+        require(corrected < session.candidates().size() && session.candidates()[corrected].corrected_from == test.input,
+                (std::string("The corrected reading must stay behind the jianpin word: ") + test.input).c_str());
+        require(session.get_pinyin_segmentation_with_cases() == test.display,
+                (std::string("The preedit must follow the literal jianpin reading: ") + test.input + " -> " +
+                 session.get_pinyin_segmentation_with_cases())
+                    .c_str());
+    }
+
+    // 选纯简拼的前缀单字只消耗它自己的声母，后面的 bn 留着继续输入。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, all, true, true, true, paths);
+        type(session, "nbn");
+        const auto committed = session.select_candidate(candidate_index(session, "能"));
+        require(committed.commit == "能" && session.has_composition() && session.preedit() == "bn",
+                "Selecting a jianpin prefix character must consume only its own initial.");
+    }
+
+    // 含双字母切分的输入不是纯简拼，漏字纠错照旧命中「上」并记下敲入的字母。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, all, true, true, true, paths);
+        type(session, "shng");
+        const auto found = find_candidate_index(session, "上");
+        require(found < session.candidates().size() && session.candidates()[found].corrected_from == "shng",
+                "A non-pure-jianpin typo (shng) must still be corrected with the typed letters recorded.");
+    }
+
+    // 纠错关时逐位不变：纯简拼输入仍由字面简拼读法领衔，且无纠错标记。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0u, true, true, true, paths);
+        type(session, "bqng");
+        require(!session.candidates().empty() && session.candidates().front().word == "并且能够" &&
+                    session.candidates().front().corrected_from.empty(),
+                "With autocorrection off a pure-jianpin reading must still lead, uncorrected.");
+    }
+
+    std::filesystem::remove_all(directory);
+}
+
 void run_caret_prefix_session_tests(const std::filesystem::path &data_directory)
 {
     const std::filesystem::path directory = data_directory / "caret-prefix";
@@ -2521,6 +2610,7 @@ int run_test()
     run_autocorrect_costlier_context_tests(data_directory);
 
     run_autocorrect_generated_space_tests(data_directory);
+    run_autocorrect_pure_jianpin_guard_tests(data_directory);
 #endif
 
 #ifndef METASEQUOIA_SKIP_FREQUENCY_TESTS

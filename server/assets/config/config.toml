@@ -515,6 +515,17 @@ r_mode = true # Shift+R 进入临时日语模式（中文状态下使用罗马�
 v_mode = true # V 模式：V 后接数字转中文（V123 → 一百二十三，V123.45 → 壹佰贰拾叁元肆角伍分）或计算算式（V1+2*3 → 7）；双拼用大写 V，全拼大小写均可
 
 #
+# Auto Type
+# 模拟输入（预置文本自动键入）
+#
+[autotype]
+enabled = false # 总开关。默认关闭：关闭时不注册任何热键，也不抢占任何按键
+hotkey = "" # 触发组合，留空表示不触发。格式 修饰键+主键，例如 ctrl+shift+alt+v
+text = "" # 要自动键入的预置文本。支持多行；send_enter 为真时换行发真实 Enter
+send_enter = true # 文本里的换行是否发送真实 Enter 键
+char_delay_ms = 30 # 每个字符之间的间隔（毫秒），0 表示全速。正在键入时再按一次热键可中断
+
+#
 # AI Assistant
 # AI 辅助
 #

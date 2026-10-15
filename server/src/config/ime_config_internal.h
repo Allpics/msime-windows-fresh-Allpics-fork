@@ -213,6 +213,12 @@ extern bool g_jianpin_mode_enabled;
 extern bool g_y_mode_enabled;
 extern bool g_r_mode_enabled;
 extern bool g_v_mode_enabled;
+// [autotype] 模拟输入。钩子线程不直接读这些值，读的是 AutoType::Reload() 取的快照。
+extern bool g_autotype_enabled;
+extern bool g_autotype_send_enter;
+extern int g_autotype_char_delay_ms;
+extern std::string g_autotype_hotkey;
+extern std::string g_autotype_text;
 extern bool g_clipboard_history_enabled;
 extern bool g_paging_minus_equal_enabled;
 extern bool g_paging_comma_period_enabled;
@@ -262,6 +268,8 @@ extern FrequencyAdjustmentConfig g_frequency_adjustment;
 extern std::filesystem::path g_config_path;
 
 bool IsHelpcodeSchemaAvailable(const std::string &schema);
+// ime_config_autotype.cpp：[autotype] 段的读取与校验，由 LoadImeConfig 调用，读完发布给 AutoType 模块。
+void LoadAutoTypeConfig(const toml::table &tbl);
 // ime_config_input.cpp：按用户选的行内预编辑样式、「双拼显示全拼」开关和当前方案算出 TSF 实际
 // 使用的样式，写进 GlobalSettings。
 void RefreshEffectiveTsfPreeditStyle();

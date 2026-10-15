@@ -53,7 +53,10 @@ const setupLoaders: Record<string, () => Promise<void>> = {
     (await import('./ai-settings')).setupAiSettings();
   },
   shortcut: async () => {
-    (await import('./shortcut')).setupShortcut();
+    const module = await import('./shortcut');
+    module.setupShortcut();
+    // 模拟输入的控件与快捷键同页。
+    module.setupAutoType();
   },
   'floating-toolbar': async () => {
     (await import('./floating-toolbar')).setupFloatingToolbar();

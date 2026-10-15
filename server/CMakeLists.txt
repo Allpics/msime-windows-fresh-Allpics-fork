@@ -145,6 +145,8 @@ if(MSVC)
 endif()
 
 set(SRC_FILES
+    "./src/autotype/auto_typer.cpp"
+    "./src/autotype/auto_typer.h"
     "./src/ai/ai_assistant.cpp"
     "./src/ai/ai_assistant.h"
     "./src/ai/ai_assistant_cache.cpp"
@@ -177,6 +179,7 @@ set(SRC_FILES
     "./src/config/ime_config_credentials.cpp"
     "./src/config/ime_config.h"
     "./src/config/ime_config_appearance.cpp"
+    "./src/config/ime_config_autotype.cpp"
     "./src/config/ime_config_fonts.cpp"
     "./src/config/ime_config_general.cpp"
     "./src/config/ime_config_input.cpp"
@@ -445,6 +448,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 set(SETTINGS_EXECUTABLE_NAME "MetasequoiaImeSettings")
 add_executable(${SETTINGS_EXECUTABLE_NAME} WIN32
+    "./src/autotype/auto_typer.cpp"
+    "./src/autotype/auto_typer.h"
     "./src/settings/settings_app.cpp"
     "./src/settings/api_credential_test.cpp"
     "./src/settings/api_credential_test.h"
@@ -474,6 +479,7 @@ add_executable(${SETTINGS_EXECUTABLE_NAME} WIN32
     "./src/config/ime_config_credentials.cpp"
     "./src/config/ime_config.h"
     "./src/config/ime_config_appearance.cpp"
+    "./src/config/ime_config_autotype.cpp"
     "./src/config/ime_config_fonts.cpp"
     "./src/config/ime_config_general.cpp"
     "./src/config/ime_config_input.cpp"

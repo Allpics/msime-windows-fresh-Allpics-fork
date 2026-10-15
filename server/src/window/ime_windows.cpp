@@ -1,4 +1,5 @@
 #include "global/globals.h"
+#include "autotype/auto_typer.h"
 #include "config/ime_config.h"
 #include "ipc/ipc.h"
 #include "ime_windows.h"
@@ -518,6 +519,10 @@ int CreateCandidateWindow(HINSTANCE hInstance)
 #ifdef FANY_DEBUG
     (void)0;
 #endif
+
+    // 配置是在本函数之前加载的，而 AutoType::Reload() 只在钩子存在时才发布快照；
+    // 这里补发一次，否则启动时读到的那份配置永远进不了快照（热键会静默失效）。
+    AutoType::Reload();
 
     // The hook lives for the whole process; nothing ever unhooks it, so the handle is not kept.
     SetWinEventHook(                 //

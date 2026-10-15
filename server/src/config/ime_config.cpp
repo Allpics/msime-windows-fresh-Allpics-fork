@@ -152,6 +152,14 @@ double g_assoc_sentence_collocation_rear_penalty = -18.0;
 bool g_assoc_sentence_source_badge = false;
 bool g_emoji_mixed_input_enabled = false;
 bool g_kaomoji_mixed_input_enabled = false;
+// [autotype] 模拟输入的默认值：功能关闭、热键未配置。
+// 注意：声明在 ime_config_internal.h 的 ime_config_detail 命名空间里，定义必须同名空间限定，
+// 否则链接期是两个不同的符号（LNK2001）。
+bool ime_config_detail::g_autotype_enabled = false;
+bool ime_config_detail::g_autotype_send_enter = true;
+int ime_config_detail::g_autotype_char_delay_ms = 30;
+std::string ime_config_detail::g_autotype_hotkey;
+std::string ime_config_detail::g_autotype_text;
 bool g_unicode_mode_enabled = true;
 bool g_quick_phrase_enabled = true;
 bool g_quick_phrase_candidates_enabled = false;
@@ -361,7 +369,9 @@ bool LoadImeConfig()
 {
     ConfigFileLock lock;
     if (!lock)
+    {
         return false;
+    }
     try
     {
         // Read via the wide path and parse the text. toml::parse_file(g_config_path.string()) would run the
@@ -369,7 +379,9 @@ bool LoadImeConfig()
         // a code page that cannot represent the characters path::string() throws, crashing the process.
         std::ifstream input(g_config_path, std::ios::binary);
         if (!input)
+        {
             return false;
+        }
         const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
         auto tbl = toml::parse(text);
         RevealStoredCredentials(tbl);
@@ -829,6 +841,7 @@ bool LoadImeConfig()
             voice.commit_mode = "tsf";
         }
         PublishVoiceInput(std::move(voice));
+        LoadAutoTypeConfig(tbl);
         g_ai_assistant.enabled = tbl["ai_assistant"]["enabled"].value_or(false);
         g_ai_assistant.provider =
             VoiceInput::NormalizeProviderId(tbl["ai_assistant"]["provider"].value_or(std::string("deepseek")));

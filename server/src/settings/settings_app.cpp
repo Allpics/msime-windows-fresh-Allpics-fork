@@ -607,6 +607,12 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"r_mode", GetConfiguredRModeEnabled()},
             {"v_mode", GetConfiguredVModeEnabled()},
             {"clipboard_history", GetConfiguredClipboardHistoryEnabled()}}},
+          {"autotype",
+           {{"enabled", GetConfiguredAutoTypeEnabled()},
+            {"hotkey", GetConfiguredAutoTypeHotkey()},
+            {"text", GetConfiguredAutoTypeText()},
+            {"send_enter", GetConfiguredAutoTypeSendEnter()},
+            {"char_delay_ms", GetConfiguredAutoTypeCharDelayMs()}}},
           {"appearance",
            {{"ui_backend", GetConfiguredUiBackend()},
             {"settings_window_linger", GetConfiguredSettingsWindowLinger()},
@@ -1013,6 +1019,16 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredVModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.clipboard_history")
         return SetConfiguredClipboardHistoryEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "autotype.enabled")
+        return SetConfiguredAutoTypeEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "autotype.hotkey")
+        return SetConfiguredAutoTypeHotkey(json::value_to<std::string>(data.at("value")));
+    if (path == "autotype.text")
+        return SetConfiguredAutoTypeText(json::value_to<std::string>(data.at("value")));
+    if (path == "autotype.send_enter")
+        return SetConfiguredAutoTypeSendEnter(json::value_to<bool>(data.at("value")));
+    if (path == "autotype.char_delay_ms")
+        return SetConfiguredAutoTypeCharDelayMs(json::value_to<int>(data.at("value")));
     if (path == "general.paging_minus_equal")
         return SetConfiguredPagingMinusEqualEnabled(json::value_to<bool>(data.at("value")));
     if (path == "general.paging_tab")

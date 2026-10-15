@@ -634,3 +634,19 @@ bool SetConfiguredFrequencyAdjustmentInt(const std::string &key, int value);
 bool SetConfiguredAiAssistantString(const std::string &key, const std::string &value);
 bool SetConfiguredAiAssistantBool(const std::string &key, bool value);
 bool SetConfiguredAiAssistantInt(const std::string &key, int value);
+
+// [autotype] 段：模拟输入（按全局热键把预置文本逐字符注入键盘事件）。
+// 默认关闭、热键默认空：未配置时本功能不注册任何热键，也不影响任何按键。
+// hotkey 的格式是 "修饰键+主键"（如 "ctrl+shift+alt+v"），解析失败一律按未配置处理。
+// 钩子线程不直接读这些值，而是读 AutoType 模块在 Reload() 里取的快照，见 autotype/auto_typer.h。
+bool GetConfiguredAutoTypeEnabled();
+bool SetConfiguredAutoTypeEnabled(bool enabled);
+// 设置页读快照用。热键与文本是串，返回的是常驻全局的引用（与同文件其它字符串 getter 同样的约定）。
+const std::string &GetConfiguredAutoTypeHotkey();
+const std::string &GetConfiguredAutoTypeText();
+bool SetConfiguredAutoTypeHotkey(const std::string &hotkey);
+bool SetConfiguredAutoTypeText(const std::string &text);
+bool GetConfiguredAutoTypeSendEnter();
+bool SetConfiguredAutoTypeSendEnter(bool enabled);
+int GetConfiguredAutoTypeCharDelayMs();
+bool SetConfiguredAutoTypeCharDelayMs(int milliseconds);

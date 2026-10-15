@@ -1,4 +1,5 @@
 #include "window_hook.h"
+#include "autotype/auto_typer.h"
 #include "config/ime_config.h"
 #include "ime_windows.h"
 #include "settings/settings_launcher.h"
@@ -123,6 +124,16 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         if (ctrl && shift && alt && p->vkCode == 'C')
         {
             PostMessage(::global_hwnd, WM_CLEAR_IME_ENGINE_CACHE, 0, 0);
+        }
+
+        //
+        // 用户配置的模拟输入热键。放在上面几个固定开发热键之后：那几个是仓库自己的绑定，
+        // 不能被用户配置抢走。默认未配置，未配置时 HandleHotkey 恒返回 false，不影响任何按键。
+        //
+        if ((ctrl || shift || alt || win) && AutoType::HandleHotkey(p->vkCode))
+        {
+            // 这是输入法的命令键，不是给前台应用的文本：吃掉它，避免多出一个字符。
+            return 1;
         }
 
         //

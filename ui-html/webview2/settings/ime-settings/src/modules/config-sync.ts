@@ -496,7 +496,14 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
     }
   }
   if (applies('shortcut')) {
-    void import('./shortcut').then((module) => { if (data === lastSnapshot) module.applyShortcutConfig(data?.keybindings); });
+    void import('./shortcut').then((module) => {
+      if (data !== lastSnapshot) return;
+      module.applyShortcutConfig(data?.keybindings);
+      // 模拟输入的控件也在快捷键页，复用同一次动态导入。
+      if (data?.autotype && typeof data.autotype === 'object') {
+        module.applyAutoTypeConfig(data.autotype);
+      }
+    });
   }
 }
 

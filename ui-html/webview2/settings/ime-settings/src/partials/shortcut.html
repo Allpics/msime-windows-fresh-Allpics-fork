@@ -76,4 +76,42 @@
       <div class="shortcut-row shortcut-row-danger"><span>立即退出输入法服务</span><div class="shortcut-keys"><kbd>Ctrl</kbd><i>+</i><kbd>Shift</kbd><i>+</i><kbd>Alt</kbd><i>+</i><kbd>T</kbd></div></div>
     </div>
   </div>
+
+  <div class="section shortcut-section">
+    <div class="shortcut-section-heading"><div><div class="section-title">模拟输入（按键注入）</div><div class="shortcut-section-description">按热键把下面的文本当作键盘按键逐字打进当前窗口，不经过剪贴板，也不模拟 Ctrl+V</div></div><span class="shortcut-badge">高级</span></div>
+    <div class="content-page-option">
+      <label class="check-option"><input type="checkbox" id="autoTypeEnabledCheckbox"><span>启用模拟输入</span></label>
+    </div>
+    <div class="shortcut-list" style="margin-top: 12px;">
+      <div class="auto-type-field">
+        <div class="auto-type-label">触发热键</div>
+        <div class="auto-type-control">
+          <input type="text" id="autoTypeHotkeyInput" class="dict-input auto-type-hotkey" readonly
+                 placeholder="点击后按下组合键；留空表示不触发" spellcheck="false">
+          <button id="autoTypeHotkeyClearButton" class="dict-button secondary" type="button">清除</button>
+        </div>
+        <div class="auto-type-hint">至少要有一个修饰键（Ctrl / Shift / Alt / Win）加一个主键。正在输入时再按一次同一热键可中断。</div>
+      </div>
+      <div class="auto-type-field">
+        <div class="auto-type-label">预置文本</div>
+        <div class="auto-type-control">
+          <textarea id="autoTypeTextInput" class="dict-input auto-type-text" rows="6"
+                    placeholder="热键触发时要输入的文本，支持多行" spellcheck="false"></textarea>
+        </div>
+      </div>
+      <div class="auto-type-field">
+        <div class="auto-type-label">每字符间隔（毫秒）</div>
+        <div class="auto-type-control">
+          <input type="number" id="autoTypeCharDelayInput" class="dict-input auto-type-delay" min="0" max="5000" step="5" value="30">
+        </div>
+        <div class="auto-type-hint">0 表示全速。间隔越大越接近真人打字，也越不容易被目标程序判定为异常输入。</div>
+      </div>
+      <div class="auto-type-field">
+        <div class="auto-type-control">
+          <label class="check-option"><input type="checkbox" id="autoTypeSendEnterCheckbox" checked><span>换行发送真实 Enter 键</span></label>
+        </div>
+        <div class="auto-type-hint">关闭时换行以普通换行字符注入，在部分单行输入框里不会产生换行。</div>
+      </div>
+    </div>
+  </div>
 </div>

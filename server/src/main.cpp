@@ -24,6 +24,7 @@
 #include "statistics/stats_pipe.h"
 #include "webview2/windows_webview2.h"
 #include "voice-input/voice_input_service.h"
+#include "autotype/auto_typer.h"
 
 namespace
 {
@@ -210,6 +211,8 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance, _In_ HINSTANCE /*hPrevInstance*/,
     CloudIme::Stop();
     ClipboardMonitor::Stop();
     VoiceInput::Shutdown();
+    // 中止可能还在进行的模拟输入，并等它的工作线程结束，再拆掉键盘钩子。
+    AutoType::Shutdown();
 
     pipe_running = false;
     pipe_queueCv.notify_one();

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模拟输入（按键注入）验证页 v2</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --line: #e3e6ea;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --ok: #15803d;
+    --bad: #b91c1c;
+    --warn: #b45309;
+    --accent: #1d4ed8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 60px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .lead { color: var(--muted); margin: 0 0 22px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .card.key { border-color: #bcd0f7; background: #f7faff; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .hint code, p code, li code, td code {
+    background: #eef1f5; border-radius: 4px; padding: 1px 5px;
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+  input[type=text], textarea, [contenteditable] {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 9px 11px;
+    font: 14px/1.6 "Microsoft YaHei", Consolas, monospace;
+    background: #fff;
+    color: var(--text);
+  }
+  textarea { min-height: 110px; resize: vertical; }
+  [contenteditable] { min-height: 46px; background: #fff; }
+  input[disabled] { background: #f2f3f5; color: #9aa1ab; }
+  input[readonly] { background: #fbfbfc; }
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+  .state {
+    margin-top: 6px;
+    font-size: 12.5px;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    color: var(--muted);
+  }
+  .state b { color: var(--text); font-weight: 600; }
+  .state.got { color: var(--ok); }
+  .tag {
+    display: inline-block; font-size: 11.5px; padding: 1px 7px;
+    border-radius: 99px; margin-left: 6px; vertical-align: 1px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .tag.block { background: #fde8e8; color: var(--bad); }
+  .tag.plus  { background: #e7f6ec; color: var(--ok); }
+  .tag.info  { background: #e8eefc; color: var(--accent); }
+  .tag.warn  { background: #fdf0e3; color: var(--warn); }
+  button {
+    font: inherit; padding: 6px 13px; border-radius: 7px;
+    border: 1px solid var(--line); background: #fff; color: var(--text);
+    cursor: pointer;
+  }
+  button:hover { background: #f3f4f6; }
+  .row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { font-family: Consolas, "Cascadia Mono", monospace; }
+  .zero { color: #9aa1ab; }
+  .nonzero { color: var(--bad); font-weight: 600; }
+  .verdict { border-radius: 9px; padding: 13px 16px; font-size: 13.5px;
+             border: 1px solid var(--line); background: #fff; }
+  .verdict.pass { border-color: #b7e0c4; background: #f1fbf4; }
+  .verdict.fail { border-color: #f2c4c4; background: #fdf2f2; }
+  .verdict.pending { color: var(--warn); }
+  .verdict .line { margin-bottom: 4px; }
+  .verdict .sum { margin-top: 10px; font-weight: 600; }
+  .ok   { color: var(--ok); }
+  .bad  { color: var(--bad); }
+  .note { color: #9aa1ab; }
+  /* contenteditable 没有 placeholder；不用 :empty（在它上面不可靠），改由脚本维护属性。 */
+  [contenteditable][data-empty="1"]:before {
+    content: attr(data-ph);
+    color: #9aa1ab;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>模拟输入（按键注入）验证页 <span class="note">v2</span></h1>
+  <p class="lead">
+    水杉的「模拟输入」走 <code>SendInput</code> + <code>KEYEVENTF_UNICODE</code> 逐字符注入按键，
+    <b>不碰剪贴板、不是 Ctrl+V</b>。本页用<b>分别计数的事件统计</b>来区分这两条通道。
+  </p>
+
+  <div class="card key">
+    <h2>先看这条边界（v1 在这里判错了）</h2>
+    <p class="hint" style="margin-bottom:8px;">
+      按键注入产生的是<b>真实的输入事件</b>。所以它能绕过<b>粘贴限制</b>，
+      但绕不过<b>网页主动拒绝输入</b>：
+    </p>
+    <table>
+      <thead><tr><th>网页的手段</th><th>粘贴 Ctrl+V</th><th>按键注入</th></tr></thead>
+      <tbody>
+        <tr><td>拦 <code>paste</code> 事件</td><td class="bad">被拦</td><td class="ok">可以写入 ✅</td></tr>
+        <tr><td>拦 <code>keydown</code> / <code>beforeinput</code></td><td class="bad">被拦</td><td class="bad">同样被拦</td></tr>
+        <tr><td><code>readonly</code></td><td class="bad">被拦</td><td class="bad">被拦</td></tr>
+        <tr><td><code>disabled</code>（无法聚焦）</td><td class="bad">被拦</td><td class="bad">被拦</td></tr>
+      </tbody>
+    </table>
+    <p class="hint" style="margin:10px 0 0;">
+      也就是说：<b>能绕过的是「禁止粘贴」，不是「禁止输入」</b>。这不是本功能的缺陷 ——
+      系统里任何真输入法（微软拼音、搜狗等）在下面③④⑤三类字段里同样写不进去。
+      因此判定时只把 <b>②「禁止粘贴」</b> 当作必须通过的判据。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>操作步骤</h2>
+    <ol class="hint" style="margin:0; padding-left:20px;">
+      <li>把焦点放进 <b>② 禁止粘贴</b> 输入框</li>
+      <li>先按一次 <code>Ctrl+V</code>：应被拦住（<code>paste</code> 计数 +1，内容不变）</li>
+      <li>按水杉的模拟输入热键</li>
+      <li>观察文字被逐字键入，且 <code>paste</code> 仍为 0</li>
+      <li>点「判定当前状态」</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>测试字段</h2>
+
+    <div class="field">
+      <label for="f1">① 普通输入框（对照组）
+        <span class="tag info">预期：成功</span></label>
+      <input type="text" id="f1" placeholder="Paste 与注入都应该成功">
+      <div class="state" id="s1"></div>
+    </div>
+
+    <div class="field">
+      <label for="f2">② 禁止粘贴（只拦 <code>paste</code>，允许正常输入）
+        <span class="tag plus">核心判据 · 预期：成功</span></label>
+      <input type="text" id="f2" placeholder="Ctrl+V 无效；注入应成功，且 paste 计数保持 0">
+      <div class="state" id="s2"></div>
+    </div>
+
+    <div class="field">
+      <label for="f3">③ 禁止一切输入（拦 <code>paste</code>/<code>keydown</code>/<code>beforeinput</code>）
+        <span class="tag warn">预期：失败（连真输入法也写不进）</span></label>
+      <input type="text" id="f3" placeholder="这是「禁止输入」而非「禁止粘贴」，注入会被网页拒绝">
+      <div class="state" id="s3"></div>
+    </div>
+
+    <div class="field">
+      <label for="f4"><code>readonly</code> 只读字段
+        <span class="tag warn">预期：失败</span></label>
+      <input type="text" id="f4" readonly placeholder="readonly 字段不接受任何写入">
+      <div class="state" id="s4"></div>
+    </div>
+
+    <div class="field">
+      <label for="f5"><code>disabled</code> 禁用字段
+        <span class="tag warn">预期：失败（无法聚焦）</span></label>
+      <input type="text" id="f5" disabled placeholder="disabled 字段拿不到焦点，任何通道都进不去">
+      <div class="state" id="s5"></div>
+    </div>
+
+    <div class="field">
+      <label for="f6">多行文本域（<code>maxlength=60</code>）
+        <span class="tag info">预期：成功 · 观察换行与截断</span></label>
+      <textarea id="f6" maxlength="60" placeholder="用于查看多行与 Enter 行为，超过 60 字会被截断"></textarea>
+      <div class="state" id="s6"></div>
+    </div>
+
+    <div class="field">
+      <label for="f7">contenteditable 富文本（非表单元素）
+        <span class="tag plus">预期：成功</span></label>
+      <div id="f7" contenteditable="true" data-ph="div 不是 input，走的是 DOM 编辑"></div>
+      <div class="state" id="s7"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>剪贴板对照（证明没有走粘贴通道）</h2>
+    <p class="hint">
+      先把焦点放进 ②，注入前后各点一次「读取剪贴板」。若注入没动过剪贴板，两次内容应当完全一致。
+    </p>
+    <div class="row">
+      <button id="clipRead">读取剪贴板并记录</button>
+      <button id="clipClear">清空记录</button>
+    </div>
+    <div class="state" id="clipState" style="margin-top:10px;">尚未读取</div>
+  </div>
+
+  <div class="card">
+    <h2>事件统计</h2>
+    <p class="hint">
+      <b>粘贴被拦</b>：<code>paste</code> 计数上升但内容不变。<br>
+      <b>按键注入</b>：<code>paste</code> 恒为 0，却出现 <code>keydown</code> / <code>beforeinput</code> / <code>input</code>。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>字段</th><th>paste</th><th>keydown</th><th>beforeinput</th>
+          <th>input</th><th>字符数</th>
+        </tr>
+      </thead>
+      <tbody id="stats"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>判定</h2>
+    <p class="hint">
+      核心判据只有两条：<b>② 有内容</b> 且 <b>② 的 paste 计数为 0</b>。
+      其余字段按各自语义分别判定，③④⑤ 失败属于预期。
+    </p>
+    <div class="row" style="margin-bottom:12px;">
+      <button id="judge">判定当前状态</button>
+      <button id="reset">全部重置</button>
+      <label style="margin:0; display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="strictAll" style="width:auto;"> 严格模式：要求①②⑥⑦全部成功
+      </label>
+    </div>
+    <div class="verdict pending" id="verdict">尚未判定</div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // expect: 'must' 必须成功；'expectFail' 预期失败（网页主动拒绝输入）；'should' 应当成功。
+  var FIELDS = [
+    { id: 'f1', label: '① 普通输入框',        blockPaste: false, blockKeys: false, expect: 'must' },
+    { id: 'f2', label: '② 禁止粘贴',          blockPaste: true,  blockKeys: false, expect: 'must',
+      note: '核心：内容进来了且 paste=0，说明是靠按键注入而非粘贴' },
+    { id: 'f3', label: '③ 禁止一切输入',      blockPaste: true,  blockKeys: true,  expect: 'expectFail',
+      note: '网页 preventDefault 拦掉了按键事件，注入被网页拒绝' },
+    { id: 'f4', label: '④ readonly',          blockPaste: true,  blockKeys: false, expect: 'expectFail',
+      note: 'readonly 字段不接受任何写入' },
+    { id: 'f5', label: '⑤ disabled',          blockPaste: true,  blockKeys: true,  expect: 'expectFail',
+      note: '拿不到焦点' },
+    { id: 'f6', label: '⑥ 多行（maxlength）', blockPaste: false, blockKeys: false, expect: 'should' },
+    { id: 'f7', label: '⑦ contenteditable',   blockPaste: true,  blockKeys: false, expect: 'should' }
+  ];
+
+  var counters = {};
+  function resetCounters() {
+    counters = {};
+    FIELDS.forEach(function (f) { counters[f.id] = { paste: 0, keydown: 0, beforeinput: 0, input: 0 }; });
+  }
+  resetCounters();
+
+  function textOf(f) {
+    var el = document.getElementById(f.id);
+    if (!el) return '';
+    return f.id === 'f7' ? (el.textContent || '') : (el.value || '');
+  }
+
+  FIELDS.forEach(function (f) {
+    var el = document.getElementById(f.id);
+    if (!el) return;
+    var c = counters[f.id];
+    ['paste', 'keydown', 'beforeinput', 'input'].forEach(function (t) {
+      el.addEventListener(t, function () { c[t] += 1; render(); }, true);
+    });
+    if (f.blockPaste) el.addEventListener('paste', function (e) { e.preventDefault(); });
+    if (f.blockKeys) {
+      el.addEventListener('keydown', function (e) { e.preventDefault(); });
+      el.addEventListener('beforeinput', function (e) { e.preventDefault(); });
+    }
+  });
+
+  function render() {
+    var tbody = document.getElementById('stats');
+    var html = '';
+    FIELDS.forEach(function (f) {
+      var c = counters[f.id], n = textOf(f).length;
+      function cell(v) { return '<td class="num ' + (v === 0 ? 'zero' : 'nonzero') + '">' + v + '</td>'; }
+      html += '<tr><td>' + f.label + '</td>' + cell(c.paste) + cell(c.keydown) +
+        cell(c.beforeinput) + cell(c.input) +
+        '<td class="num ' + (n === 0 ? 'zero' : 'nonzero') + '">' + n + '</td></tr>';
+    });
+    tbody.innerHTML = html;
+
+    FIELDS.forEach(function (f) {
+      var c = counters[f.id], n = textOf(f).length;
+      var el = document.getElementById('s' + f.id.charAt(1));
+      if (!el) return;
+      el.className = 'state' + (n > 0 ? ' got' : '');
+      el.innerHTML = '内容 <b>' + n + '</b> 字　·　paste <b>' + c.paste + '</b>　keydown <b>' + c.keydown +
+        '</b>　beforeinput <b>' + c.beforeinput + '</b>　input <b>' + c.input + '</b>';
+    });
+  }
+
+  ['f1', 'f2', 'f3', 'f4', 'f6', 'f7'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) { el.addEventListener('input', render); el.addEventListener('keyup', render); }
+  });
+  setInterval(render, 400);   // 注入是异步逐字的，定时刷新让计数实时可见
+  render();
+
+  // ---------- 剪贴板对照 ----------
+  var clipLog = [];
+  document.getElementById('clipRead').addEventListener('click', function () {
+    function record(text) {
+      clipLog.push({ t: new Date().toLocaleTimeString(), text: text });
+      var first = clipLog[0];
+      var same = clipLog.every(function (e) { return e.text === first.text; });
+      var lines = clipLog.map(function (e, i) {
+        var shown = e.text === '' ? '(空)' : e.text.replace(/\s+/g, ' ').slice(0, 60);
+        return (i + 1) + '. ' + e.t + '　' + shown;
+      }).join('<br>');
+      var box = document.getElementById('clipState');
+      box.className = 'state ' + (clipLog.length > 1 ? (same ? 'got' : '') : '');
+      box.innerHTML = lines + (clipLog.length > 1
+        ? '<br><b>' + (same
+            ? '剪贴板全程未变 → 注入没有走粘贴通道 ✅'
+            : '剪贴板内容发生了变化 ⚠ 说明有别的程序改写过剪贴板') + '</b>'
+        : '<br>再读一次做对比');
+    }
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText()
+        .then(record)
+        .catch(function () { record(prompt('此环境拒绝读取剪贴板，请手动粘贴一次内容：') || ''); });
+    } else {
+      record(prompt('此环境不支持读取剪贴板，请手动粘贴一次内容：') || '');
+    }
+  });
+  document.getElementById('clipClear').addEventListener('click', function () {
+    clipLog = [];
+    var box = document.getElementById('clipState');
+    box.className = 'state';
+    box.textContent = '尚未读取';
+  });
+
+  // ---------- 判定 ----------
+  document.getElementById('judge').addEventListener('click', function () {
+    var strict = document.getElementById('strictAll').checked;
+    var lines = [], coreFail = false, strictFail = false;
+
+    FIELDS.forEach(function (f) {
+      var c = counters[f.id], n = textOf(f).length, got = n > 0;
+
+      if (f.expect === 'expectFail') {
+        // 预期写不进去；写进去了也不是坏事，只是说明该网页限制没生效。
+        lines.push('<div class="line"><span class="' + (got ? 'ok' : 'note') + '">' +
+          (got ? '➖' : '➖') + ' ' + f.label + '：' + (got ? '意外写入了 ' + n + ' 字（该网页的限制未生效）'
+                                                          : '如预期未能写入') +
+          '　<span class="note">' + (f.note || '') + '</span></div>');
+        return;
+      }
+
+      // must / should：期望写入成功，且不得是粘贴进来的。
+      var pass = got && c.paste === 0;
+      var why = !got ? '没有内容' : (c.paste > 0 ? '有内容，但 paste 计数为 ' + c.paste + '（可能走了粘贴通道）'
+                                                  : '有内容且 paste=0（按键注入）');
+      if (!pass) {
+        if (f.expect === 'must') coreFail = true; else strictFail = true;
+      }
+      lines.push('<div class="line"><span class="' + (pass ? 'ok' : 'bad') + '">' +
+        (pass ? '✅' : '❌') + ' ' + f.label + '：' + why + '</span></div>');
+    });
+
+    var box = document.getElementById('verdict');
+    var headline;
+    if (coreFail) {
+      box.className = 'verdict fail';
+      headline = '核心判据未通过：②「禁止粘贴」没有拿到按键注入的文字。请确认焦点在 ② 上、热键配置正确、server 在运行。';
+    } else if (strict && strictFail) {
+      box.className = 'verdict fail';
+      headline = '核心判据通过（② 已证明绕过粘贴）；但严格模式下有字段未成功。';
+    } else {
+      box.className = 'verdict pass';
+      headline = '核心判据通过 ✅ ② 的文字是靠按键注入写入的，全程 paste=0 —— 粘贴限制被绕过。';
+    }
+    box.innerHTML = lines.join('') + '<div class="sum">' + headline + '</div>';
+  });
+
+  document.getElementById('reset').addEventListener('click', function () {
+    FIELDS.forEach(function (f) {
+      var el = document.getElementById(f.id);
+      if (!el) return;
+      if (f.id === 'f7') { el.textContent = ''; } else { el.value = ''; }
+    });
+    resetCounters();
+    clipLog = [];
+    var box = document.getElementById('clipState');
+    box.className = 'state';
+    box.textContent = '尚未读取';
+    var v = document.getElementById('verdict');
+    v.className = 'verdict pending';
+    v.textContent = '尚未判定';
+    render();
+  });
+
+  // contenteditable 的占位提示
+  var ce = document.getElementById('f7');
+  function syncPlaceholder() {
+    var empty = (ce.textContent || '').trim() === '';
+    ce.setAttribute('data-empty', empty ? '1' : '0');
+  }
+  ce.addEventListener('input', syncPlaceholder);
+  syncPlaceholder();
+})();
+</script>
+</body>
+</html>

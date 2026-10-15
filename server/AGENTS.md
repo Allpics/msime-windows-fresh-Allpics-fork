@@ -41,6 +41,8 @@ ctest --test-dir build-release -C Release --output-on-failure
 
 `MetasequoiaImeServer.manifest` 用 `requestedExecutionLevel level="asInvoker" uiAccess="true"`，浮层才能盖在高完整性宿主之上。`uiAccess` 真正生效还依赖正确签名和安装在 Windows 认可的位置，清单、签名、安装路径是同一套发布约定。
 
+**清单只在发布路径注入，编译步骤不注入。** 注入由 `scripts/ci/embed-server-manifest.ps1` 完成，位置在 `release.yml` 里测试通过之后、上传与签名之前——因为带 `uiAccess` 的二进制无法在非交互会话（runner 的服务会话）里启动，必须先测普通版本。`lcompile-release.ps1` 早先也注入过一次，已移除：本地/测试构建只有自签名证书，`uiAccess` 不会生效，而带该清单的 exe 会连启动都失败（watchdog 用 `ShellExecuteEx` 拉不起来，见 `src/watchdog/main.cpp:126`），表现是"中文输入整个坏掉"。不要把这个注入加回编译脚本。
+
 进程在 `src/main.cpp:90` 设 `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`。
 
 **创建 HWND 时不能直接带 `WS_EX_TOPMOST`。** 在 `uiAccess=true` 进程里，Topmost 父窗口会让 WebView2 的跨进程 `SetParent` 返回 `E_INVALIDARG`，或者形成「窗口存在、尺寸正确但永远空白」。现有顺序是：非 Topmost 建窗 → DWM cloak 下预热 → 三个共享 environment 的 controller 依次创建并完成首屏导航 → lazy-topmost gate 打开 → 分阶段提升到 `HWND_TOPMOST`。提升后要用 `RenotifyControllerAfterPin` 重新同步 bounds 和 parent position。不要在布局函数里随手传 `HWND_TOPMOST`，也不要绕过 `EnsureSmallWindowsTopmost` / lazy pin。

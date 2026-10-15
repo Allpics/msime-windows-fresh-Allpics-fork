@@ -20,6 +20,13 @@
 
 #define MyAppName      "Metasequoia IME 水杉输入法"
 #define MyAppVersion   "0.0.1"
+; 上游主线版本基底 + 本分支的标识。格式：<主线基底>.f<分支号>.a<该功能第几次发版>
+;   f1 = 自动输入分支（fork）
+;   a1 = 该分支第 1 次发版，第 2 次是 a2，以此类推
+; 它只用于显示、安装包文件名与 Release 命名；不参与 PE 版本资源，
+; 因此不会碰到 Windows 版本资源「必须 4 段纯数字」的限制。
+#define MyForkTag      ".f1.a1"
+#define MyDisplayVersion MyAppVersion + MyForkTag
 #define MyAppPublisher "Metasequoia"
 #define MyAppExeName   "MetasequoiaImeServer.exe"
 #define MySettingsExeName "MetasequoiaImeSettings.exe"
@@ -32,6 +39,8 @@
 #define MyWatchdogName "MetasequoiaImeWatchdog.exe"
 #define MyWatchdogTaskName "Metasequoia IME Watchdog"
 #define MyReplayName   "MetasequoiaImeDictionaryReplay.exe"
+; 版本目录用数字基底：它决定 TSF DLL 的落地目录与升级时的后缀轮转（.1/.2/…），
+; 不引入分支标记，避免影响既有升级路径。
 #define MyVersionDirBase "msime_v" + MyAppVersion
 #define MySourceRoot   "."
 #ifdef LightPackage
@@ -43,7 +52,7 @@
 [Setup]
 AppId={{A7C3E91F-4B2D-4E8A-9F1C-6D5E8B0A2C4D}
 AppName={#MyAppName}
-AppVersion={#MyAppVersion}
+AppVersion={#MyDisplayVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\metasequoiaime
 DefaultGroupName={#MyAppName}
@@ -52,7 +61,7 @@ DisableDirPage=yes
 AlwaysShowDirOnReadyPage=yes
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=MetasequoiaIME_Setup_v{#MyAppVersion}{#MyOutputSuffix}
+OutputBaseFilename=MetasequoiaIME_Setup_v{#MyDisplayVersion}{#MyOutputSuffix}
 SetupIconFile={#MySourceRoot}\MetasequoiaIME.ico
 Compression=lzma2
 SolidCompression=yes

@@ -115,16 +115,13 @@ bool ParseMainKey(const std::string &name, unsigned int &vk)
         unsigned int vk;
     };
     static const NamedKey kNamedKeys[] = {
-        {"space", VK_SPACE},         {"enter", VK_RETURN},          {"return", VK_RETURN},
-        {"tab", VK_TAB},             {"escape", VK_ESCAPE},          {"esc", VK_ESCAPE},
-        {"backspace", VK_BACK},      {"delete", VK_DELETE},          {"insert", VK_INSERT},
-        {"home", VK_HOME},           {"end", VK_END},                {"pageup", VK_PRIOR},
-        {"pagedown", VK_NEXT},       {"up", VK_UP},                  {"down", VK_DOWN},
-        {"left", VK_LEFT},           {"right", VK_RIGHT},            {"minus", VK_OEM_MINUS},
-        {"equal", VK_OEM_PLUS},      {"comma", VK_OEM_COMMA},        {"period", VK_OEM_PERIOD},
-        {"slash", VK_OEM_2},         {"backslash", VK_OEM_5},        {"semicolon", VK_OEM_1},
-        {"quote", VK_OEM_7},         {"backquote", VK_OEM_3},        {"bracketleft", VK_OEM_4},
-        {"bracketright", VK_OEM_6},
+        {"space", VK_SPACE},       {"enter", VK_RETURN},    {"return", VK_RETURN},     {"tab", VK_TAB},
+        {"escape", VK_ESCAPE},     {"esc", VK_ESCAPE},      {"backspace", VK_BACK},    {"delete", VK_DELETE},
+        {"insert", VK_INSERT},     {"home", VK_HOME},       {"end", VK_END},           {"pageup", VK_PRIOR},
+        {"pagedown", VK_NEXT},     {"up", VK_UP},           {"down", VK_DOWN},         {"left", VK_LEFT},
+        {"right", VK_RIGHT},       {"minus", VK_OEM_MINUS}, {"equal", VK_OEM_PLUS},    {"comma", VK_OEM_COMMA},
+        {"period", VK_OEM_PERIOD}, {"slash", VK_OEM_2},     {"backslash", VK_OEM_5},   {"semicolon", VK_OEM_1},
+        {"quote", VK_OEM_7},       {"backquote", VK_OEM_3}, {"bracketleft", VK_OEM_4}, {"bracketright", VK_OEM_6},
     };
     for (const auto &key : kNamedKeys)
     {

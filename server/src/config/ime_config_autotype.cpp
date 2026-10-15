@@ -69,7 +69,8 @@ const std::string &GetConfiguredAutoTypeText()
 }
 
 bool SetConfiguredAutoTypeHotkey(const std::string &hotkey)
-{    if (!WriteConfiguredValue("autotype", "hotkey", EscapeTomlBasicString(hotkey)))
+{
+    if (!WriteConfiguredValue("autotype", "hotkey", EscapeTomlBasicString(hotkey)))
     {
         return false;
     }

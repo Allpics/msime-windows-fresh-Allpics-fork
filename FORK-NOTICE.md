@@ -37,6 +37,28 @@ GPL-3.0 不提供任何担保（见 `LICENSE` 第 15、16 条）。本仓库的�
 本仓库**不是 GitHub 的 fork 关系仓库**，而是基于上述提交独立创建的仓库；
 两者共享同一段上游历史，但本仓库的改动未提交给上游，上游也未包含这些改动。
 
+### 关于「独立仓库」还是「GitHub fork」
+
+GitHub 的 fork 关系（仓库页显示 "forked from ..."）**只影响平台层面的呈现与协作便利**，
+**不改变 GPL-3.0 下的任何权利与义务** —— GPL 关心的是保留版权与许可声明、标注修改、
+以及在再分发时提供对应源码，这些本仓库都已按上文做到。所以**独立仓库完全合规**。
+
+两种做法各自的取舍：
+
+| | GitHub fork | 独立仓库（当前选择） |
+|---|---|---|
+| 来源可见性 | 平台自动显示 "forked from"，最直观 | 靠本文件与 `INSTALL.md` 说明；已写明上游与基线提交 |
+| 向上游提 PR | 原生支持 | 需要先把上游加为远端再推分支 |
+| 与上游的差异 | 平台可对比 | 需要本地 `git fetch` 对比 |
+| 同步上游更新 | 同样要手动 `git fetch` / `merge` | 同左 |
+
+> **注意：仓库创建后无法直接转换为 fork 关系。** 若确实需要 GitHub 的 fork 标记，
+> 只能在 GitHub 上删除本仓库、再用 Fork 功能重建；已推送的提交可以原样推回。
+> 当前仓库 `Allpics/msime-windows-fresh-Allpics-fork` 在 API 上 `fork = false`，
+> 即 **fork 关系不成立**——如果将来要申请 SignPath Foundation 的免费签名，
+> 其条款要求「your project visibly uses a fork of the upstream project,
+> e.g. using GitHub's fork feature」，届时需要先处理这一点。
+
 ### 改动范围
 
 **修改的上游文件（20 个）**
